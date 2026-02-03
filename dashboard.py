@@ -28,7 +28,12 @@ def get_google_sheet_client():
         except: return None
     elif "gcp_service_account" in st.secrets:
         try:
-            creds_dict = json.loads(st.secrets["gcp_service_account"])
+            # Handle both string (TOML) and dict (JSON) formats
+            secret_value = st.secrets["gcp_service_account"]
+            if isinstance(secret_value, str):
+                creds_dict = json.loads(secret_value)
+            else:
+                creds_dict = secret_value
             creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
             return gspread.authorize(creds)
         except: return None
@@ -116,6 +121,7 @@ def load_data():
     if not client: return None, None, {}, "Auth Failed"
     try:
         sh = client.open(SHEET_NAME)
+        # MASTER
         try:
             ws_master = sh.worksheet("Master")
             m_data = ws_master.get_all_values()
@@ -130,6 +136,7 @@ def load_data():
         if 'Fuzzy Match Keywords' in master.columns: master['Fuzzy Match Keywords'] = master['Fuzzy Match Keywords'].astype(str)
         if 'Unit' in master.columns: master['Unit'] = master['Unit'].fillna("")
 
+        # RESULTS
         try:
             ws_res = sh.worksheet("Results")
             data = ws_res.get_all_values()
@@ -145,12 +152,14 @@ def load_data():
         for col in REQUIRED_COLUMNS:
             if col not in results.columns: results[col] = ""
 
+        # PROFILE
         try:
             ws_prof = sh.worksheet("Profile")
             p_data = ws_prof.get_all_values()
             profile = {r[0]: r[1] for r in p_data if len(r) >= 2}
         except: profile = {}
 
+        # PROCESS
         if not results.empty:
             results['Date'] = pd.to_datetime(results['Date'], errors='coerce')
             results = results.dropna(subset=['Date'])
@@ -475,9 +484,12 @@ def safe_parse_list(val):
 # --- 8. MAIN APP ---
 st.sidebar.title("HealthOS")
 master_df, results_df, user_profile, msg = load_data()
+
+# --- AUTH SAFETY STOP ---
 if master_df is None: 
-    master_df, results_df = pd.DataFrame(), pd.DataFrame()
-    st.sidebar.error(msg)
+    st.error(f"Database Connection Failed: {msg}")
+    st.info("Please check your Secrets configuration in Streamlit Cloud.")
+    st.stop()
 
 # SELECTOR
 unique_dates = sorted(results_df['Date'].dropna().unique(), reverse=True)
