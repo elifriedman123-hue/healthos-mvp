@@ -13,8 +13,9 @@ from difflib import SequenceMatcher
 from datetime import datetime
 from google.generativeai.types import HarmCategory, HarmBlockThreshold, GenerationConfig
 
-# --- 1. CONFIGURATION ---
-st.set_page_config(page_title="HealthOS", layout="wide", initial_sidebar_state="expanded")
+# --- 1. CONFIGURATION (MOBILE OPTIMIZED) ---
+# CHANGE 1: Collapse sidebar by default for more screen space
+st.set_page_config(page_title="HealthOS", layout="wide", initial_sidebar_state="collapsed")
 
 # --- AUTHENTICATION ---
 def get_google_sheet_client():
@@ -28,7 +29,6 @@ def get_google_sheet_client():
         except: return None
     elif "gcp_service_account" in st.secrets:
         try:
-            # Handle both string (TOML) and dict (JSON) formats
             secret_value = st.secrets["gcp_service_account"]
             if isinstance(secret_value, str):
                 creds_dict = json.loads(secret_value)
@@ -61,15 +61,18 @@ safety_settings = {
     HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
 }
 
-# --- 2. STYLING (TRUE APPLE AESTHETIC) ---
+# --- 2. STYLING (MOBILE POLISHED) ---
 st.markdown("""
     <style>
+    /* CHANGE 2: Remove huge top padding on mobile */
+    .block-container { padding-top: 1rem; padding-bottom: 5rem; }
+    
     /* Global Reset */
     [data-testid="stAppViewContainer"] { background-color: #000000; color: #F5F5F7; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
     [data-testid="stSidebar"] { background-color: #1C1C1E; border-right: 1px solid #2C2C2E; }
     
     /* Apple Header */
-    .ios-header { font-size: 14px; text-transform: uppercase; color: #8E8E93; font-weight: 600; margin-top: 30px; margin-bottom: 8px; padding-left: 16px; }
+    .ios-header { font-size: 14px; text-transform: uppercase; color: #8E8E93; font-weight: 600; margin-top: 20px; margin-bottom: 8px; padding-left: 8px; }
     
     /* Apple Grouped Table Container */
     .ios-card { background-color: #1C1C1E; border-radius: 12px; overflow: hidden; margin-bottom: 20px; border: 1px solid #2C2C2E; }
@@ -77,11 +80,10 @@ st.markdown("""
     /* Apple Table Row */
     .ios-row { display: flex; justify-content: space-between; align-items: center; padding: 16px 16px; border-bottom: 1px solid #2C2C2E; transition: background 0.2s; }
     .ios-row:last-child { border-bottom: none; }
-    .ios-row:hover { background-color: #2C2C2E; }
-
+    
     /* Text Styles */
-    .marker-name { font-size: 17px; font-weight: 500; color: #FFFFFF; width: 35%; }
-    .data-col { font-size: 16px; color: #FFFFFF; width: 20%; text-align: right; font-variant-numeric: tabular-nums; border-left: 1px solid #2C2C2E; padding-right: 10px; }
+    .marker-name { font-size: 16px; font-weight: 500; color: #FFFFFF; width: 40%; }
+    .data-col { font-size: 16px; color: #FFFFFF; width: 20%; text-align: right; font-variant-numeric: tabular-nums; border-left: 1px solid #2C2C2E; padding-right: 5px; }
     .arrow-bad { color: #FF3B30; font-size: 14px; margin-left: 4px; font-weight: bold; }
     .arrow-good { color: #34C759; font-size: 14px; margin-left: 4px; font-weight: bold; }
     
@@ -92,21 +94,27 @@ st.markdown("""
     .p-red { background-color: #FF3B30; box-shadow: 0 0 8px rgba(255, 59, 48, 0.4); }
     .p-blue { background-color: #007AFF; box-shadow: 0 0 8px rgba(0, 122, 255, 0.4); }
 
-    /* Legend Styles */
-    .legend-container { display: flex; flex-wrap: wrap; gap: 15px; padding: 10px 0 20px 5px; border-bottom: 1px solid #2C2C2E; margin-bottom: 20px; }
-    .legend-item { display: flex; align-items: center; font-size: 13px; color: #8E8E93; font-weight: 500; }
+    /* CHANGE 3: RESPONSIVE GRID FOR STATS */
+    .stat-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+        gap: 10px;
+        margin-bottom: 20px;
+    }
+    .stat-box { text-align: center; padding: 15px 5px; border-radius: 16px; background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255,255,255,0.05); }
+    .stat-num { font-size: 24px; font-weight: 700; margin: 0; color: white; }
+    .stat-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 4px; opacity: 0.7; color: white; }
 
     /* Restored Dashboard Styles */
     .glass-card { background: rgba(28, 28, 30, 0.6); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.1); border-radius: 24px; padding: 24px; margin-bottom: 8px; box-shadow: 0 4px 24px rgba(0,0,0,0.2); }
-    .stat-box { text-align: center; padding: 15px; border-radius: 16px; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255,255,255,0.05); }
-    .stat-num { font-size: 32px; font-weight: 700; margin: 0; }
-    .stat-label { font-size: 12px; font-weight: 500; text-transform: uppercase; letter-spacing: 1px; margin-top: 5px; opacity: 0.8; }
-    .ai-report-box { background: linear-gradient(135deg, rgba(28, 28, 30, 0.9) 0%, rgba(10, 10, 12, 0.95) 100%); border: 1px solid rgba(0, 122, 255, 0.3); border-radius: 24px; padding: 30px; margin-bottom: 30px; }
+    .ai-report-box { background: linear-gradient(135deg, rgba(28, 28, 30, 0.9) 0%, rgba(10, 10, 12, 0.95) 100%); border: 1px solid rgba(0, 122, 255, 0.3); border-radius: 24px; padding: 20px; margin-bottom: 30px; font-size: 14px; }
+    
+    .legend-container { display: flex; flex-wrap: wrap; gap: 10px; padding: 10px 0 15px 5px; border-bottom: 1px solid #2C2C2E; margin-bottom: 15px; }
+    .legend-item { display: flex; align-items: center; font-size: 12px; color: #8E8E93; font-weight: 500; }
 
-    div.stButton > button { width: 100%; border-radius: 12px; background-color: rgba(255, 255, 255, 0.05); color: #aaa; border: 1px solid rgba(255, 255, 255, 0.1); font-size: 12px; margin-bottom: 24px; padding: 4px 0; }
+    div.stButton > button { width: 100%; border-radius: 12px; background-color: rgba(255, 255, 255, 0.05); color: #aaa; border: 1px solid rgba(255, 255, 255, 0.1); font-size: 14px; margin-bottom: 10px; padding: 8px 0; }
     div.stButton > button:hover { background-color: rgba(255, 255, 255, 0.15); color: white; border-color: #007AFF; }
-    div[data-baseweb="select"] > div { background-color: rgba(255,255,255,0.1) !important; color: white !important; border: none; }
-    input, textarea { background-color: rgba(255,255,255,0.1) !important; color: white !important; border: none; }
+    input, textarea, div[data-baseweb="select"] > div { background-color: rgba(255,255,255,0.1) !important; color: white !important; border: none; font-size: 16px !important; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -121,7 +129,6 @@ def load_data():
     if not client: return None, None, {}, "Auth Failed"
     try:
         sh = client.open(SHEET_NAME)
-        # MASTER
         try:
             ws_master = sh.worksheet("Master")
             m_data = ws_master.get_all_values()
@@ -136,7 +143,6 @@ def load_data():
         if 'Fuzzy Match Keywords' in master.columns: master['Fuzzy Match Keywords'] = master['Fuzzy Match Keywords'].astype(str)
         if 'Unit' in master.columns: master['Unit'] = master['Unit'].fillna("")
 
-        # RESULTS
         try:
             ws_res = sh.worksheet("Results")
             data = ws_res.get_all_values()
@@ -152,14 +158,12 @@ def load_data():
         for col in REQUIRED_COLUMNS:
             if col not in results.columns: results[col] = ""
 
-        # PROFILE
         try:
             ws_prof = sh.worksheet("Profile")
             p_data = ws_prof.get_all_values()
             profile = {r[0]: r[1] for r in p_data if len(r) >= 2}
         except: profile = {}
 
-        # PROCESS
         if not results.empty:
             results['Date'] = pd.to_datetime(results['Date'], errors='coerce')
             results = results.dropna(subset=['Date'])
@@ -223,16 +227,16 @@ def process_uploaded_image(uploaded_file):
         prompt = f"""Act as a Medical Document Scanner. EXTRACT structured data.
         
         CRITICAL RULES:
-        1. **MANDATORY SEARCH:** Look closely for these markers (they may be abbreviated or in a separate column):
+        1. **MANDATORY SEARCH:** Look closely for these markers:
            - MCHC
-           - White Cell Count / WCC / Leucocytes / Leukocytes
+           - White Cell Count / WCC / Leucocytes
            - Free T3 / FT3
            - Free T4 / FT4
-           - SHBG / Sex Hormone Binding Globulin
+           - SHBG
            - Non-HDL Cholesterol
         
         2. **UNIT LOGIC:**
-           - If a row has TWO values (e.g., 55% and 4.50), use the ABSOLUTE count (usually the smaller number like 4.50).
+           - If a row has TWO values (e.g., 55% and 4.50), use the ABSOLUTE count.
            - IGNORE the % value.
         
         3. **FORMAT:**
@@ -256,21 +260,20 @@ def process_uploaded_image(uploaded_file):
         return df, "Success"
     except Exception as e: return None, str(e)
 
-# --- 5. LOGIC (CATEGORIZATION & UNIFICATION) ---
+# --- 5. LOGIC ---
 def smart_clean(marker):
     m = str(marker).upper()
     return re.sub(r'^[SPBU]-\s*', '', m.replace("SERUM", "").replace("PLASMA", "").replace("BLOOD", "").replace("TOTAL", "").strip())
 
-# EXPANDED CATEGORY MAP (THE FIX FOR "OTHER")
 CATEGORY_MAP = {
     "❤️ Lipids & Heart": ["CHOLESTEROL", "HDL", "LDL", "TRIG", "APOB", "LIPOPROTEIN", "NON-HDL", "RATIO", "HOMOCYST", "CRP", "HS-CRP"],
     "🧬 Hormones": ["TESTOSTERONE", "OESTRADIOL", "PROGESTERONE", "DHEA", "SHBG", "FSH", "LH", "CORTISOL", "PROLACTIN"],
     "🦋 Thyroid": ["TSH", "T3", "T4", "FT3", "FT4"],
     "⚡ Metabolic": ["GLUCOSE", "INSULIN", "HBA1C", "SUGAR"],
     "🩸 Blood Health": ["HAEMOGLOBIN", "RED CELL", "WHITE CELL", "PLATELET", "NEUTROPHIL", "LYMPHOCYTE", "MONOCYTE", "EOSINOPHIL", "BASOPHIL", "MCH", "MCV", "RDW", "HCT", "HAEMATOCRIT", "LEUCOCYTE", "ERYTHROCYTE"],
-    "🦴 Vitamins & Minerals": ["VITAMIN", "MAGNESIUM", "IRON", "FERRITIN", "ZINC", "TRANSFERRIN", "SATURATION", "CALCIUM"],
-    "🍺 Liver Health": ["ALT", "AST", "GGT", "BILIRUBIN", "ALBUMIN", "GLOBULIN", "PROTEIN", "ALKALINE", "PHOSPHATASE"],
-    "💧 Kidney & Electrolytes": ["CREATININE", "UREA", "EGFR", "URIC ACID", "SODIUM", "POTASSIUM", "CHLORIDE", "CO2", "BICARBONATE", "ANION GAP"]
+    "🦴 Vitamins": ["VITAMIN", "MAGNESIUM", "IRON", "FERRITIN", "ZINC", "TRANSFERRIN", "SATURATION", "CALCIUM"],
+    "🍺 Liver": ["ALT", "AST", "GGT", "BILIRUBIN", "ALBUMIN", "GLOBULIN", "PROTEIN", "ALKALINE", "PHOSPHATASE"],
+    "💧 Kidney": ["CREATININE", "UREA", "EGFR", "URIC ACID", "SODIUM", "POTASSIUM", "CHLORIDE", "CO2", "BICARBONATE"]
 }
 
 def get_category(marker_name):
@@ -278,24 +281,14 @@ def get_category(marker_name):
     for cat, keywords in CATEGORY_MAP.items():
         for k in keywords:
             if k in clean: return cat
-    return "📝 Other Biomarkers"
+    return "📝 Other"
 
 def unify_marker_names(marker):
     clean = smart_clean(marker)
-    
-    # 1. RATIO GUARD
     if "RATIO" in clean: return "Cholesterol/HDL Ratio"
-    
-    # 2. FREE TESTO GUARD
     if "FREE" in clean and "TESTO" in clean: return "Free Testosterone"
-    
-    # 3. TESTOSTERONE (TOTAL) FIX
     if "TESTOSTERONE" in clean: return "Total Testosterone"
-    
-    # 4. NON-HDL GUARD
     if "NON-HDL" in clean or "NON HDL" in clean: return "Non-HDL Cholesterol"
-    
-    # 5. Standard Mapping
     if "LDL" in clean: return "LDL Cholesterol"
     if "HDL" in clean: return "HDL Cholesterol"
     if "CHOLESTEROL" in clean: return "Total Cholesterol"
@@ -304,7 +297,6 @@ def unify_marker_names(marker):
     if "LEUCOCYTE" in clean or "WHITE CELL" in clean: return "White Cell Count"
     if "ERYTHROCYTE" in clean or "RED CELL" in clean: return "Red Cell Count"
     if "PLATELET" in clean: return "Platelets"
-    
     return marker.title()
 
 def fuzzy_match(marker, master):
@@ -344,17 +336,13 @@ def get_detailed_status(val, master_row, marker_name):
         try: o_max = float(str(master_row['Optimal Max']).replace(',', '.'))
         except: o_max = 0.0
 
-        # --- HARDCODED FLOORS ---
-        if "VITAMIN D" in clean_name: 
-            if o_min == 0: o_min = 50.0
-        if "DHEA" in clean_name: 
-            if o_min == 0: o_min = 6.0 
+        if "VITAMIN D" in clean_name and o_min == 0: o_min = 50.0
+        if "DHEA" in clean_name and o_min == 0: o_min = 6.0 
 
         wbc_types = ["NEUTROPHIL", "LYMPHOCYTE", "MONOCYTE", "EOSINOPHIL", "BASOPHIL"]
         if any(x in clean_name for x in wbc_types) and s_max > 0 and val > (s_max * 5):
              return "PERCENTAGE", "#8E8E93", "c-grey", "", f"{val}%", 5
 
-        # GRADING
         unit = str(master_row['Unit']) if pd.notna(master_row['Unit']) else ""
         rng_str = f"{s_min} - {s_max} {unit}"
 
@@ -362,7 +350,7 @@ def get_detailed_status(val, master_row, marker_name):
         if s_min > 0 and val < s_min: return "OUT OF RANGE", "#FF3B30", "c-red", "LOW", rng_str, 1
         if s_max > 0 and val > s_max: return "OUT OF RANGE", "#FF3B30", "c-red", "HIGH", rng_str, 1
         
-        # --- HDL TRAP (FORCE ORANGE) ---
+        # HDL TRAP
         if "HDL" in clean_name and "NON" not in clean_name:
             if val < 1.4: return "BORDERLINE", "#FF9500", "c-orange", "LOW END", rng_str, 2
 
@@ -371,7 +359,6 @@ def get_detailed_status(val, master_row, marker_name):
         check_max = o_max if o_max > 0 else s_max
         if has_optimal and val >= check_min and val <= check_max: return "OPTIMAL", "#007AFF", "c-blue", "ELITE", rng_str, 3
 
-        # Surgical Orange
         no_buffer_list = ["TRIG", "CHOLESTEROL", "LDL", "UREA", "CREATININE"]
         if any(x in clean_name for x in no_buffer_list): return "IN RANGE", "#34C759", "c-green", "OK", rng_str, 4
 
@@ -396,7 +383,6 @@ def filter_best_matches(processed_rows):
     df = df.drop_duplicates(subset=['Marker'], keep='first')
     return df
 
-# --- 7. AI GENERATORS ---
 def format_profile_for_ai(profile):
     bio = profile.get('bio_context', 'No narrative provided.')
     supps = profile.get('supplements', 'None')
@@ -473,7 +459,6 @@ def generate_snapshot_report(df_view, date_str, profile, history_df):
         return response.text if response.parts else "AI Analysis Unavailable."
     except Exception as e: return f"Error: {e}"
 
-# --- HELPER ---
 def safe_parse_list(val):
     if not val: return []
     try:
@@ -594,10 +579,15 @@ elif page == "Lab Snapshot":
     if df_display.empty: st.warning("No matched biomarkers."); st.stop()
 
     st.markdown(f"### 🔬 Record: {selected_label}")
-    cols = st.columns(6)
+    
+    # RESPONSIVE GRID FOR METRICS
+    st.markdown("""<div class="stat-grid">""", unsafe_allow_html=True)
     metrics = [("Tested", len(df_display), "white"), ("Optimal", stats['Blue'], "#007AFF"), ("In Range", stats['Green'], "#34C759"), ("Borderline", stats['Orange'], "#FF9500"), ("Out of Range", stats['Red'], "#FF3B30"), ("Unit Error", stats['Mismatch'], "#8E8E93")]
-    for i, (l, v, c) in enumerate(metrics):
-        with cols[i]: st.markdown(f"""<div class="glass-card stat-box"><h1 class="stat-num" style="color:{c};">{v}</h1><div class="stat-label" style="color:{c};">{l}</div></div>""", unsafe_allow_html=True)
+    
+    grid_html = ""
+    for l, v, c in metrics:
+        grid_html += f"""<div class="stat-box"><div class="stat-num" style="color:{c};">{v}</div><div class="stat-label" style="color:{c};">{l}</div></div>"""
+    st.markdown(grid_html + "</div>", unsafe_allow_html=True)
 
     if st.button("🧠 Analyze Lab & History"):
         with st.spinner("Analyzing..."):
@@ -640,9 +630,9 @@ elif page == "Trend Analysis":
         <div class="legend-item"><span class="pill p-blue"></span>Optimal</div>
         <div class="legend-item"><span class="pill p-green"></span>Normal</div>
         <div class="legend-item"><span class="pill p-orange"></span>Borderline</div>
-        <div class="legend-item"><span class="pill p-red"></span>Out of Range</div>
-        <div class="legend-item" style="margin-left:10px"><span style="color:#34C759;font-weight:bold">↑↓</span> Improving</div>
-        <div class="legend-item"><span style="color:#FF3B30;font-weight:bold">↑↓</span> Worsening</div>
+        <div class="legend-item"><span class="pill p-red"></span>Out</div>
+        <div class="legend-item" style="margin-left:10px"><span style="color:#34C759;font-weight:bold">↑↓</span> Good</div>
+        <div class="legend-item"><span style="color:#FF3B30;font-weight:bold">↑↓</span> Bad</div>
     </div>
     """, unsafe_allow_html=True)
     
@@ -652,9 +642,9 @@ elif page == "Trend Analysis":
     results_df['Category'] = results_df['UnifiedMarker'].apply(lambda x: get_category(x))
     
     categories = sorted(results_df['Category'].unique())
-    if "📝 Other Biomarkers" in categories:
-        categories.remove("📝 Other Biomarkers")
-        categories.append("📝 Other Biomarkers")
+    if "📝 Other" in categories:
+        categories.remove("📝 Other")
+        categories.append("📝 Other")
 
     # SMART ARROW LOGIC (BINARY COLORING)
     HIGHER_IS_BETTER = ["HDL Cholesterol", "Vitamin D", "Total Testosterone", "Free Testosterone", "Magnesium", "Vitamin B12", "Folate", "Ferritin", "Iron", "Haemoglobin", "Red Cell Count"]
