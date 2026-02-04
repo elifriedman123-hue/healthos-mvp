@@ -14,7 +14,6 @@ from datetime import datetime
 from google.generativeai.types import HarmCategory, HarmBlockThreshold, GenerationConfig
 
 # --- 1. CONFIGURATION (MOBILE OPTIMIZED) ---
-# CHANGE 1: Collapse sidebar by default for more screen space
 st.set_page_config(page_title="HealthOS", layout="wide", initial_sidebar_state="collapsed")
 
 # --- AUTHENTICATION ---
@@ -61,10 +60,14 @@ safety_settings = {
     HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
 }
 
-# --- 2. STYLING (MOBILE POLISHED) ---
+# --- 2. STYLING (FULL SCREEN MOBILE) ---
 st.markdown("""
     <style>
-    /* CHANGE 2: Remove huge top padding on mobile */
+    /* CHANGE 1: HIDE STREAMLIT TOOLBAR & FOOTER */
+    [data-testid="stHeader"] { display: none; }
+    footer { visibility: hidden; }
+    
+    /* CHANGE 2: Remove huge top padding */
     .block-container { padding-top: 1rem; padding-bottom: 5rem; }
     
     /* Global Reset */
@@ -84,8 +87,6 @@ st.markdown("""
     /* Text Styles */
     .marker-name { font-size: 16px; font-weight: 500; color: #FFFFFF; width: 40%; }
     .data-col { font-size: 16px; color: #FFFFFF; width: 20%; text-align: right; font-variant-numeric: tabular-nums; border-left: 1px solid #2C2C2E; padding-right: 5px; }
-    .arrow-bad { color: #FF3B30; font-size: 14px; margin-left: 4px; font-weight: bold; }
-    .arrow-good { color: #34C759; font-size: 14px; margin-left: 4px; font-weight: bold; }
     
     /* Status Pills */
     .pill { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 8px; }
@@ -94,7 +95,11 @@ st.markdown("""
     .p-red { background-color: #FF3B30; box-shadow: 0 0 8px rgba(255, 59, 48, 0.4); }
     .p-blue { background-color: #007AFF; box-shadow: 0 0 8px rgba(0, 122, 255, 0.4); }
 
-    /* CHANGE 3: RESPONSIVE GRID FOR STATS */
+    /* Arrow Styles */
+    .arrow-bad { color: #FF3B30; font-size: 14px; margin-left: 4px; font-weight: bold; }
+    .arrow-good { color: #34C759; font-size: 14px; margin-left: 4px; font-weight: bold; }
+
+    /* Grid for Stats */
     .stat-grid {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
@@ -105,10 +110,9 @@ st.markdown("""
     .stat-num { font-size: 24px; font-weight: 700; margin: 0; color: white; }
     .stat-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 4px; opacity: 0.7; color: white; }
 
-    /* Restored Dashboard Styles */
+    /* Dashboard & Legend */
     .glass-card { background: rgba(28, 28, 30, 0.6); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.1); border-radius: 24px; padding: 24px; margin-bottom: 8px; box-shadow: 0 4px 24px rgba(0,0,0,0.2); }
     .ai-report-box { background: linear-gradient(135deg, rgba(28, 28, 30, 0.9) 0%, rgba(10, 10, 12, 0.95) 100%); border: 1px solid rgba(0, 122, 255, 0.3); border-radius: 24px; padding: 20px; margin-bottom: 30px; font-size: 14px; }
-    
     .legend-container { display: flex; flex-wrap: wrap; gap: 10px; padding: 10px 0 15px 5px; border-bottom: 1px solid #2C2C2E; margin-bottom: 15px; }
     .legend-item { display: flex; align-items: center; font-size: 12px; color: #8E8E93; font-weight: 500; }
 
@@ -636,7 +640,9 @@ elif page == "Trend Analysis":
     </div>
     """, unsafe_allow_html=True)
     
-    unique_dates = sorted(results_df['Date'].dropna().unique(), reverse=False)
+    # FILTER: LATEST 3 DATES ONLY
+    all_dates = sorted(results_df['Date'].dropna().unique(), reverse=False)
+    unique_dates = all_dates[-3:]
     
     results_df['UnifiedMarker'] = results_df['Marker'].apply(lambda x: unify_marker_names(x))
     results_df['Category'] = results_df['UnifiedMarker'].apply(lambda x: get_category(x))
