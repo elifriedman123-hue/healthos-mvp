@@ -60,15 +60,39 @@ safety_settings = {
     HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
 }
 
-# --- 2. STYLING (FULL SCREEN MOBILE) ---
+# --- 2. STYLING (FULL SCREEN MOBILE + TABS) ---
 st.markdown("""
     <style>
-    /* CHANGE 1: HIDE STREAMLIT TOOLBAR & FOOTER */
+    /* HIDE STREAMLIT UI */
     [data-testid="stHeader"] { display: none; }
     footer { visibility: hidden; }
     
-    /* CHANGE 2: Remove huge top padding */
+    /* PADDING FIXES */
     .block-container { padding-top: 1rem; padding-bottom: 5rem; }
+    
+    /* MOBILE TABS (Horizontal Radio) */
+    div[role="radiogroup"] {
+        flex-direction: row;
+        justify-content: center;
+        width: 100%;
+        background-color: #1C1C1E;
+        padding: 5px;
+        border-radius: 12px;
+        margin-bottom: 20px;
+    }
+    /* Style the buttons inside the tab bar */
+    div[role="radiogroup"] label {
+        flex: 1;
+        text-align: center;
+        background-color: transparent;
+        border: none;
+        padding: 8px 10px;
+        border-radius: 8px;
+        transition: background-color 0.2s;
+    }
+    div[role="radiogroup"] label:hover {
+        background-color: #2C2C2E;
+    }
     
     /* Global Reset */
     [data-testid="stAppViewContainer"] { background-color: #000000; color: #F5F5F7; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
@@ -471,7 +495,7 @@ def safe_parse_list(val):
     except: return []
 
 # --- 8. MAIN APP ---
-st.sidebar.title("HealthOS")
+st.title("HealthOS")
 master_df, results_df, user_profile, msg = load_data()
 
 # --- AUTH SAFETY STOP ---
@@ -480,33 +504,9 @@ if master_df is None:
     st.info("Please check your Secrets configuration in Streamlit Cloud.")
     st.stop()
 
-# SELECTOR
-unique_dates = sorted(results_df['Date'].dropna().unique(), reverse=True)
-date_options = [d.strftime('%Y-%m-%d') for d in unique_dates if pd.notna(d)]
-if date_options:
-    default_idx = 0
-    if 'auto_select_date' in st.session_state:
-        target = st.session_state.pop('auto_select_date')
-        if target in date_options: default_idx = date_options.index(target)
-    st.sidebar.markdown("### 🗓️ Active Record")
-    selected_label = st.sidebar.selectbox("Select Lab:", date_options, index=default_idx)
-else: selected_label = None
-
-page = st.sidebar.radio("Navigation", ["👤 My Profile", "Lab Snapshot", "Trend Analysis"])
-
-# UPLOAD
-with st.sidebar.expander("📤 Upload New Lab"):
-    uploaded_lab = st.file_uploader("Drag & Drop Lab Image", type=['png', 'jpg', 'jpeg', 'pdf'])
-    if uploaded_lab and st.button("Process & Digitize"):
-        with st.spinner("AI Reading..."):
-            new_df, status = process_uploaded_image(uploaded_lab)
-            if new_df is not None:
-                smart_save_to_sheet(new_df)
-                st.success(f"✅ Saved markers!"); time.sleep(1.5); st.rerun()
-            else: st.error(status)
-
-with st.sidebar.expander("🗑️ Admin Zone"):
-    if st.button("⚠️ Wipe Database"): clear_database(); st.warning("Cleared."); time.sleep(1); st.rerun()
+# --- TOP NAVIGATION BAR (REPLACES SIDEBAR) ---
+# This creates a "tab" look at the top of the app
+page = st.radio("Go to", ["👤 My Profile", "Lab Snapshot", "Trend Analysis"], horizontal=True, label_visibility="collapsed")
 
 # PAGE 1
 if page == "👤 My Profile":
@@ -556,10 +556,38 @@ if page == "👤 My Profile":
                 "goals": str(goals), "supplements": supplements, "bio_context": bio_context
             })
             st.success("Saved!"); time.sleep(1); st.rerun()
+            
+    with st.expander("🗑️ Admin Zone"):
+        if st.button("⚠️ Wipe Database"): clear_database(); st.warning("Cleared."); time.sleep(1); st.rerun()
 
 # PAGE 2
 elif page == "Lab Snapshot":
-    if not selected_label: st.info("Database empty."); st.stop()
+    # UPLOAD MOVED HERE
+    with st.expander("📤 Upload New Lab"):
+        uploaded_lab = st.file_uploader("Drag & Drop Lab Image", type=['png', 'jpg', 'jpeg', 'pdf'])
+        if uploaded_lab and st.button("Process & Digitize"):
+            with st.spinner("AI Reading..."):
+                new_df, status = process_uploaded_image(uploaded_lab)
+                if new_df is not None:
+                    smart_save_to_sheet(new_df)
+                    st.success(f"✅ Saved markers!"); time.sleep(1.5); st.rerun()
+                else: st.error(status)
+    
+    unique_dates = sorted(results_df['Date'].dropna().unique(), reverse=True)
+    date_options = [d.strftime('%Y-%m-%d') for d in unique_dates if pd.notna(d)]
+    
+    if not date_options:
+        st.info("Database empty. Upload a lab above!")
+        st.stop()
+        
+    default_idx = 0
+    if 'auto_select_date' in st.session_state:
+        target = st.session_state.pop('auto_select_date')
+        if target in date_options: default_idx = date_options.index(target)
+    
+    # Custom Selector for Mobile
+    selected_label = st.selectbox("Select Lab Report:", date_options, index=default_idx)
+
     snapshot = results_df[results_df['Date'].astype(str).str.startswith(selected_label)].copy()
     processed_rows, stats = [], {"Blue": 0, "Green": 0, "Orange": 0, "Red": 0, "Mismatch": 0}
     
@@ -581,8 +609,6 @@ elif page == "Lab Snapshot":
     df_display = df_view[~df_view['Status'].isin(['PERCENTAGE', 'UNIT MISMATCH'])]
 
     if df_display.empty: st.warning("No matched biomarkers."); st.stop()
-
-    st.markdown(f"### 🔬 Record: {selected_label}")
     
     # RESPONSIVE GRID FOR METRICS
     st.markdown("""<div class="stat-grid">""", unsafe_allow_html=True)
