@@ -13,7 +13,7 @@ from difflib import SequenceMatcher
 from datetime import datetime
 from google.generativeai.types import HarmCategory, HarmBlockThreshold, GenerationConfig
 
-# --- 1. CONFIGURATION (MOBILE OPTIMIZED) ---
+# --- 1. CONFIGURATION ---
 st.set_page_config(page_title="HealthOS", layout="wide", initial_sidebar_state="collapsed")
 
 # --- AUTHENTICATION ---
@@ -60,89 +60,93 @@ safety_settings = {
     HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
 }
 
-# --- 2. STYLING (FULL SCREEN MOBILE + TABS) ---
+# --- 2. RESPONSIVE STYLING (THE MAGIC) ---
 st.markdown("""
     <style>
-    /* HIDE STREAMLIT UI */
+    /* 1. CLEAN UI REMOVALS */
     [data-testid="stHeader"] { display: none; }
     footer { visibility: hidden; }
-    
-    /* PADDING FIXES */
     .block-container { padding-top: 1rem; padding-bottom: 5rem; }
     
-    /* MOBILE TABS (Horizontal Radio) */
+    /* 2. NAVIGATION BAR POLISH */
     div[role="radiogroup"] {
         flex-direction: row;
-        justify-content: center;
         width: 100%;
         background-color: #1C1C1E;
-        padding: 5px;
+        padding: 4px;
         border-radius: 12px;
-        margin-bottom: 20px;
+        margin-bottom: 15px;
+        overflow-x: auto; /* Safety scroll */
+        flex-wrap: nowrap; /* Prevent wrapping */
     }
-    /* Style the buttons inside the tab bar */
     div[role="radiogroup"] label {
         flex: 1;
+        min-width: 80px; /* Ensure buttons don't crush */
         text-align: center;
         background-color: transparent;
         border: none;
-        padding: 8px 10px;
+        padding: 8px 4px;
         border-radius: 8px;
-        transition: background-color 0.2s;
+        transition: background 0.2s;
     }
     div[role="radiogroup"] label:hover {
         background-color: #2C2C2E;
     }
-    
+    /* CRITICAL: Force text to 1 line and shrink font on mobile */
+    div[role="radiogroup"] label p {
+        font-size: 14px;
+        white-space: nowrap !important;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        margin: 0;
+        font-weight: 500;
+    }
+
+    /* 3. CARD SYSTEM & TYPOGRAPHY */
     /* Global Reset */
     [data-testid="stAppViewContainer"] { background-color: #000000; color: #F5F5F7; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
-    [data-testid="stSidebar"] { background-color: #1C1C1E; border-right: 1px solid #2C2C2E; }
     
-    /* Apple Header */
-    .ios-header { font-size: 14px; text-transform: uppercase; color: #8E8E93; font-weight: 600; margin-top: 20px; margin-bottom: 8px; padding-left: 8px; }
-    
-    /* Apple Grouped Table Container */
-    .ios-card { background-color: #1C1C1E; border-radius: 12px; overflow: hidden; margin-bottom: 20px; border: 1px solid #2C2C2E; }
-    
-    /* Apple Table Row */
-    .ios-row { display: flex; justify-content: space-between; align-items: center; padding: 16px 16px; border-bottom: 1px solid #2C2C2E; transition: background 0.2s; }
-    .ios-row:last-child { border-bottom: none; }
-    
-    /* Text Styles */
-    .marker-name { font-size: 16px; font-weight: 500; color: #FFFFFF; width: 40%; }
-    .data-col { font-size: 16px; color: #FFFFFF; width: 20%; text-align: right; font-variant-numeric: tabular-nums; border-left: 1px solid #2C2C2E; padding-right: 5px; }
-    
-    /* Status Pills */
-    .pill { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 8px; }
-    .p-green { background-color: #34C759; box-shadow: 0 0 8px rgba(52, 199, 89, 0.4); }
-    .p-orange { background-color: #FF9500; box-shadow: 0 0 8px rgba(255, 149, 0, 0.4); }
-    .p-red { background-color: #FF3B30; box-shadow: 0 0 8px rgba(255, 59, 48, 0.4); }
-    .p-blue { background-color: #007AFF; box-shadow: 0 0 8px rgba(0, 122, 255, 0.4); }
-
-    /* Arrow Styles */
-    .arrow-bad { color: #FF3B30; font-size: 14px; margin-left: 4px; font-weight: bold; }
-    .arrow-good { color: #34C759; font-size: 14px; margin-left: 4px; font-weight: bold; }
-
-    /* Grid for Stats */
-    .stat-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
-        gap: 10px;
-        margin-bottom: 20px;
+    /* Card Design */
+    .glass-card { 
+        background: rgba(28, 28, 30, 0.6); 
+        backdrop-filter: blur(20px); 
+        border: 1px solid rgba(255,255,255,0.1); 
+        border-radius: 20px; 
+        padding: 20px; 
+        margin-bottom: 10px; 
+        box-shadow: 0 4px 24px rgba(0,0,0,0.2); 
     }
-    .stat-box { text-align: center; padding: 15px 5px; border-radius: 16px; background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255,255,255,0.05); }
-    .stat-num { font-size: 24px; font-weight: 700; margin: 0; color: white; }
-    .stat-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 4px; opacity: 0.7; color: white; }
+    
+    /* Typography */
+    .marker-title { margin: 0; font-size: 16px; font-weight: 600; color: white; }
+    .marker-value { margin: 0; font-size: 20px; font-weight: 700; }
+    .marker-sub { margin-top: 4px; font-size: 11px; color: #8E8E93; text-transform: uppercase; letter-spacing: 0.5px; }
 
-    /* Dashboard & Legend */
-    .glass-card { background: rgba(28, 28, 30, 0.6); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.1); border-radius: 24px; padding: 24px; margin-bottom: 8px; box-shadow: 0 4px 24px rgba(0,0,0,0.2); }
-    .ai-report-box { background: linear-gradient(135deg, rgba(28, 28, 30, 0.9) 0%, rgba(10, 10, 12, 0.95) 100%); border: 1px solid rgba(0, 122, 255, 0.3); border-radius: 24px; padding: 20px; margin-bottom: 30px; font-size: 14px; }
-    .legend-container { display: flex; flex-wrap: wrap; gap: 10px; padding: 10px 0 15px 5px; border-bottom: 1px solid #2C2C2E; margin-bottom: 15px; }
-    .legend-item { display: flex; align-items: center; font-size: 12px; color: #8E8E93; font-weight: 500; }
+    /* 4. RESPONSIVE GRID (Desktop vs Mobile) */
+    /* On Desktop, Streamlit columns handle it. On Mobile, we tune the font/padding. */
+    @media only screen and (max-width: 600px) {
+        .glass-card { padding: 12px 16px; border-radius: 16px; }
+        .marker-title { font-size: 14px; }
+        .marker-value { font-size: 18px; }
+        div[role="radiogroup"] label p { font-size: 11px !important; }
+    }
 
-    div.stButton > button { width: 100%; border-radius: 12px; background-color: rgba(255, 255, 255, 0.05); color: #aaa; border: 1px solid rgba(255, 255, 255, 0.1); font-size: 14px; margin-bottom: 10px; padding: 8px 0; }
-    div.stButton > button:hover { background-color: rgba(255, 255, 255, 0.15); color: white; border-color: #007AFF; }
+    /* Stat Grid */
+    .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(80px, 1fr)); gap: 8px; margin-bottom: 20px; }
+    .stat-box { text-align: center; padding: 10px 4px; border-radius: 12px; background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255,255,255,0.05); }
+    .stat-num { font-size: 20px; font-weight: 700; margin: 0; color: white; }
+    .stat-label { font-size: 9px; font-weight: 600; text-transform: uppercase; opacity: 0.7; color: white; }
+
+    /* Heatmap Styles */
+    .ios-header { font-size: 13px; text-transform: uppercase; color: #8E8E93; font-weight: 600; margin: 20px 0 8px 8px; }
+    .ios-card { background-color: #1C1C1E; border-radius: 12px; overflow: hidden; margin-bottom: 15px; border: 1px solid #2C2C2E; }
+    .ios-row { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-bottom: 1px solid #2C2C2E; }
+    .ios-row:last-child { border-bottom: none; }
+    .data-col { font-size: 14px; color: #FFFFFF; width: 25%; text-align: right; border-left: 1px solid #2C2C2E; padding-right: 5px; }
+    
+    /* Inputs */
     input, textarea, div[data-baseweb="select"] > div { background-color: rgba(255,255,255,0.1) !important; color: white !important; border: none; font-size: 16px !important; }
+    div.stButton > button { width: 100%; border-radius: 12px; background-color: rgba(255, 255, 255, 0.08); color: #ccc; border: none; font-size: 13px; padding: 8px 0; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -294,11 +298,11 @@ def smart_clean(marker):
     return re.sub(r'^[SPBU]-\s*', '', m.replace("SERUM", "").replace("PLASMA", "").replace("BLOOD", "").replace("TOTAL", "").strip())
 
 CATEGORY_MAP = {
-    "❤️ Lipids & Heart": ["CHOLESTEROL", "HDL", "LDL", "TRIG", "APOB", "LIPOPROTEIN", "NON-HDL", "RATIO", "HOMOCYST", "CRP", "HS-CRP"],
+    "❤️ Lipids": ["CHOLESTEROL", "HDL", "LDL", "TRIG", "APOB", "LIPOPROTEIN", "NON-HDL", "RATIO", "HOMOCYST", "CRP", "HS-CRP"],
     "🧬 Hormones": ["TESTOSTERONE", "OESTRADIOL", "PROGESTERONE", "DHEA", "SHBG", "FSH", "LH", "CORTISOL", "PROLACTIN"],
     "🦋 Thyroid": ["TSH", "T3", "T4", "FT3", "FT4"],
     "⚡ Metabolic": ["GLUCOSE", "INSULIN", "HBA1C", "SUGAR"],
-    "🩸 Blood Health": ["HAEMOGLOBIN", "RED CELL", "WHITE CELL", "PLATELET", "NEUTROPHIL", "LYMPHOCYTE", "MONOCYTE", "EOSINOPHIL", "BASOPHIL", "MCH", "MCV", "RDW", "HCT", "HAEMATOCRIT", "LEUCOCYTE", "ERYTHROCYTE"],
+    "🩸 Blood": ["HAEMOGLOBIN", "RED CELL", "WHITE CELL", "PLATELET", "NEUTROPHIL", "LYMPHOCYTE", "MONOCYTE", "EOSINOPHIL", "BASOPHIL", "MCH", "MCV", "RDW", "HCT", "HAEMATOCRIT", "LEUCOCYTE", "ERYTHROCYTE"],
     "🦴 Vitamins": ["VITAMIN", "MAGNESIUM", "IRON", "FERRITIN", "ZINC", "TRANSFERRIN", "SATURATION", "CALCIUM"],
     "🍺 Liver": ["ALT", "AST", "GGT", "BILIRUBIN", "ALBUMIN", "GLOBULIN", "PROTEIN", "ALKALINE", "PHOSPHATASE"],
     "💧 Kidney": ["CREATININE", "UREA", "EGFR", "URIC ACID", "SODIUM", "POTASSIUM", "CHLORIDE", "CO2", "BICARBONATE"]
@@ -504,12 +508,12 @@ if master_df is None:
     st.info("Please check your Secrets configuration in Streamlit Cloud.")
     st.stop()
 
-# --- TOP NAVIGATION BAR (REPLACES SIDEBAR) ---
-# This creates a "tab" look at the top of the app
-page = st.radio("Go to", ["👤 My Profile", "Lab Snapshot", "Trend Analysis"], horizontal=True, label_visibility="collapsed")
+# --- NAVIGATION ---
+# Renamed "Lab Snapshot" -> "My Labs" to prevent wrapping on small phones
+page = st.radio("Go to", ["👤 Profile", "My Labs", "Trends"], horizontal=True, label_visibility="collapsed")
 
 # PAGE 1
-if page == "👤 My Profile":
+if page == "👤 Profile":
     st.markdown("### 🏥 Medical & Lifestyle Intake")
     with st.form("p_form"):
         c1, c2, c3, c4 = st.columns(4)
@@ -561,8 +565,7 @@ if page == "👤 My Profile":
         if st.button("⚠️ Wipe Database"): clear_database(); st.warning("Cleared."); time.sleep(1); st.rerun()
 
 # PAGE 2
-elif page == "Lab Snapshot":
-    # UPLOAD MOVED HERE
+elif page == "My Labs":
     with st.expander("📤 Upload New Lab"):
         uploaded_lab = st.file_uploader("Drag & Drop Lab Image", type=['png', 'jpg', 'jpeg', 'pdf'])
         if uploaded_lab and st.button("Process & Digitize"):
@@ -585,7 +588,6 @@ elif page == "Lab Snapshot":
         target = st.session_state.pop('auto_select_date')
         if target in date_options: default_idx = date_options.index(target)
     
-    # Custom Selector for Mobile
     selected_label = st.selectbox("Select Lab Report:", date_options, index=default_idx)
 
     snapshot = results_df[results_df['Date'].astype(str).str.startswith(selected_label)].copy()
@@ -610,9 +612,8 @@ elif page == "Lab Snapshot":
 
     if df_display.empty: st.warning("No matched biomarkers."); st.stop()
     
-    # RESPONSIVE GRID FOR METRICS
     st.markdown("""<div class="stat-grid">""", unsafe_allow_html=True)
-    metrics = [("Tested", len(df_display), "white"), ("Optimal", stats['Blue'], "#007AFF"), ("In Range", stats['Green'], "#34C759"), ("Borderline", stats['Orange'], "#FF9500"), ("Out of Range", stats['Red'], "#FF3B30"), ("Unit Error", stats['Mismatch'], "#8E8E93")]
+    metrics = [("Tested", len(df_display), "white"), ("Optimal", stats['Blue'], "#007AFF"), ("Normal", stats['Green'], "#34C759"), ("Border", stats['Orange'], "#FF9500"), ("Out", stats['Red'], "#FF3B30"), ("Error", stats['Mismatch'], "#8E8E93")]
     
     grid_html = ""
     for l, v, c in metrics:
@@ -629,17 +630,29 @@ elif page == "Lab Snapshot":
     st.divider()
     c_warn, c_good = st.columns(2)
     with c_warn:
-        st.subheader("⚠️ Attention Needed")
+        st.subheader("⚠️ Attention")
         bad_df = df_display[df_display['Priority'].isin([1, 2])]
         if bad_df.empty: st.markdown("✅ No Issues")
         for idx, r in bad_df.sort_values('Priority').iterrows():
-            st.markdown(f"""<div class="glass-card" style="border-left:4px solid {r['Color']}"><div style="display:flex;justify-content:space-between"><div><span class="{r['Class']}" style="font-size:10px;font-weight:bold">{r['Status']}</span><h3 style="margin:5px 0 0 0">{r['Marker']}</h3><p style="color:#aaa;font-size:12px">Range: {r['Range']}</p></div><div style="text-align:right"><h2 style="margin:0;color:{r['Color']}">{r['Value']}</h2></div></div><div style="margin-top:8px;font-size:12px;color:#ccc">{r['Meaning']}</div></div>""", unsafe_allow_html=True)
+            st.markdown(f"""
+            <div class="glass-card" style="border-left:4px solid {r['Color']}">
+                <div style="display:flex;justify-content:space-between">
+                    <div>
+                        <div class="marker-title">{r['Marker']}</div>
+                        <div class="marker-sub" style="color:{r['Color']}">{r['Status']}</div>
+                    </div>
+                    <div style="text-align:right">
+                        <div class="marker-value" style="color:{r['Color']}">{r['Value']}</div>
+                    </div>
+                </div>
+            </div>""", unsafe_allow_html=True)
+            
             k = f"b_warn_{idx}_{r['Marker']}"
-            if st.button(f"🎓 Explain {r['Marker']}", key=k): st.session_state[f"d_{k}"] = True
+            if st.button(f"Details: {r['Marker']}", key=k): st.session_state[f"d_{k}"] = True
             if st.session_state.get(f"d_{k}"):
                 if f"e_{k}" not in st.session_state:
                     with st.spinner("..."): st.session_state[f"e_{k}"] = generate_deep_dive(r['Marker'], r['Value'], r['Status'], user_profile)
-                with st.expander("Details", expanded=True):
+                with st.expander("Explanation", expanded=True):
                     st.write(st.session_state[f"e_{k}"])
                     if st.button("Close", key=f"c_{k}"): st.session_state[f"d_{k}"] = False; st.rerun()
 
@@ -647,22 +660,30 @@ elif page == "Lab Snapshot":
         st.subheader("✅ Optimized")
         good_df = df_display[df_display['Priority'].isin([3, 4])]
         for idx, r in good_df.sort_values('Priority').iterrows():
-            st.markdown(f"""<div class="glass-card" style="border-left:4px solid {r['Color']}"><div style="display:flex;justify-content:space-between"><div><span class="{r['Class']}" style="font-size:10px;font-weight:bold">{r['Status']}</span><h3 style="margin:5px 0 0 0">{r['Marker']}</h3></div><div style="text-align:right"><h2 style="margin:0;color:{r['Color']}">{r['Value']}</h2></div></div><div style="margin-top:8px;font-size:12px;color:#ccc">{r['Meaning']}</div></div>""", unsafe_allow_html=True)
+            st.markdown(f"""
+            <div class="glass-card" style="border-left:4px solid {r['Color']}">
+                <div style="display:flex;justify-content:space-between">
+                    <div>
+                        <div class="marker-title">{r['Marker']}</div>
+                    </div>
+                    <div style="text-align:right">
+                        <div class="marker-value" style="color:{r['Color']}">{r['Value']}</div>
+                    </div>
+                </div>
+            </div>""", unsafe_allow_html=True)
 
 # PAGE 3 - TREND HEATMAP
-elif page == "Trend Analysis":
+elif page == "Trends":
     if results_df.empty: st.info("Database empty."); st.stop()
     st.markdown("### 📈 Health Heatmap")
     
     # LEGEND
     st.markdown("""
     <div class="legend-container">
-        <div class="legend-item"><span class="pill p-blue"></span>Optimal</div>
-        <div class="legend-item"><span class="pill p-green"></span>Normal</div>
-        <div class="legend-item"><span class="pill p-orange"></span>Borderline</div>
+        <div class="legend-item"><span class="pill p-blue"></span>Elite</div>
+        <div class="legend-item"><span class="pill p-green"></span>Good</div>
+        <div class="legend-item"><span class="pill p-orange"></span>Border</div>
         <div class="legend-item"><span class="pill p-red"></span>Out</div>
-        <div class="legend-item" style="margin-left:10px"><span style="color:#34C759;font-weight:bold">↑↓</span> Good</div>
-        <div class="legend-item"><span style="color:#FF3B30;font-weight:bold">↑↓</span> Bad</div>
     </div>
     """, unsafe_allow_html=True)
     
@@ -678,7 +699,6 @@ elif page == "Trend Analysis":
         categories.remove("📝 Other")
         categories.append("📝 Other")
 
-    # SMART ARROW LOGIC (BINARY COLORING)
     HIGHER_IS_BETTER = ["HDL Cholesterol", "Vitamin D", "Total Testosterone", "Free Testosterone", "Magnesium", "Vitamin B12", "Folate", "Ferritin", "Iron", "Haemoglobin", "Red Cell Count"]
 
     for cat in categories:
