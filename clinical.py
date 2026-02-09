@@ -118,27 +118,27 @@ def process_csv_upload(uploaded_file):
     except Exception as e: return f"Error: {str(e)}"
 
 
-# --- 4. VISUALIZATION ENGINE (The "TRT View") ---
+# --- 4. VISUALIZATION ENGINE (FIXED) ---
 def plot_clinical_trend(marker_name, results_df, events_df):
     # Filter data
     chart_data = results_df[results_df['Marker'] == marker_name].copy()
     if chart_data.empty: return None
     
-    # Base Line Chart
+    # Base Chart Definition
     base = alt.Chart(chart_data).encode(
         x=alt.X('Date:T', title='Timeline'),
         y=alt.Y('NumericValue:Q', title=marker_name),
         tooltip=['Date', 'Value', 'Source']
     )
     
-    line = base.mark_line(color='#007AFF', strokeWidth=3).encode(
-        point=alt.OverlayMarkDef(color='#007AFF', size=60)
+    # 1. The Line (FIXED SYNTAX HERE)
+    line = base.mark_line(
+        color='#007AFF', 
+        strokeWidth=3,
+        point=alt.OverlayMarkDef(color='#007AFF', size=60) # Moved inside mark_line
     )
 
-    # Reference Areas (Optional - hardcoded for demo)
-    # You could make this dynamic later
-    
-    # Event Lines (Vertical Rules)
+    # 2. Event Lines (Vertical Rules)
     if not events_df.empty:
         rules = alt.Chart(events_df).mark_rule(color='red', strokeWidth=2, strokeDash=[5,5]).encode(
             x='Date:T',
