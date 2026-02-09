@@ -749,3 +749,4 @@ elif page == "Trends":
             st.markdown(f"""<div class='ios-row'><div class='marker-name'>{marker}</div>{col_html}</div>""", unsafe_allow_html=True)
             
         st.markdown("</div>", unsafe_allow_html=True)
+
