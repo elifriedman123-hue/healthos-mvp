@@ -186,16 +186,13 @@ def get_detailed_status(val, master_row, marker_name):
         if s_max > 0 and val > s_max: return "OUT OF RANGE", "#FF3B30", "c-red", rng_str, 1
         
         # 2. Orange (Borderline)
-        # Check higher is better logic
         higher_is_better = ["VITAMIND", "VITAMIN D", "DHEA", "TESTOSTERONE", "MAGNESIUM", "B12", "FOLATE", "HDL", "FERRITIN"]
         if any(x in clean_name for x in higher_is_better):
             if o_min > 0 and val < o_min: return "BORDERLINE", "#FF9500", "c-orange", rng_str, 2
         
-        # Check specific HDL
         if "HDL" in clean_name and "NON" not in clean_name and val < 1.4:
             return "BORDERLINE", "#FF9500", "c-orange", rng_str, 2
             
-        # Check Buffer (Top/Bottom 2.5% of range)
         range_span = s_max - s_min
         buffer = range_span * 0.025 if range_span > 0 else 0
         if buffer > 0:
@@ -208,38 +205,100 @@ def get_detailed_status(val, master_row, marker_name):
         check_max = o_max if o_max > 0 else s_max
         if has_optimal and val >= check_min and val <= check_max: return "OPTIMAL", "#007AFF", "c-blue", rng_str, 3
         
-        # 4. Green (Normal/In Range)
+        # 4. Green (Normal)
         return "IN RANGE", "#34C759", "c-green", rng_str, 4
     except: return "ERROR", "#8E8E93", "c-grey", "Error", 5
 
-def plot_clinical_trend(marker_name, results_df, events_df):
+# --- VISUALIZATION ENGINE (UPGRADED) ---
+def plot_clinical_trend(marker_name, results_df, events_df, master_df):
     chart_data = results_df[results_df['Marker'] == marker_name].copy()
     if chart_data.empty: return None
-    
+
+    # Get Range for Reference Band
+    min_val, max_val = 0, 0
+    master_row = fuzzy_match(marker_name, master_df)
+    if master_row is not None:
+        min_val, max_val = parse_range(master_row['Standard Range'])
+
+    # 1. Base Layer (The Data)
     base = alt.Chart(chart_data).encode(
-        x=alt.X('Date:T', title='Timeline'),
-        y=alt.Y('NumericValue:Q', title=marker_name),
-        tooltip=['Date', 'Value', 'Source']
-    )
-    
-    line = base.mark_line(
-        color='#007AFF', 
-        strokeWidth=3,
-        point=alt.OverlayMarkDef(color='#007AFF', size=60)
+        x=alt.X('Date:T', title=None, axis=alt.Axis(format='%d %b %Y', labelColor='#8E8E93', tickColor='#2C2C2E', domain=False)),
+        y=alt.Y('NumericValue:Q', title=None, scale=alt.Scale(zero=False, padding=20), axis=alt.Axis(labelColor='#8E8E93', tickColor='#2C2C2E', domain=False)),
+        tooltip=[
+            alt.Tooltip('Date:T', format='%d %b %Y'),
+            alt.Tooltip('NumericValue:Q', title=marker_name),
+            alt.Tooltip('Source')
+        ]
     )
 
+    # 2. Reference Band (The "Safety Corridor")
+    bands = alt.Chart(pd.DataFrame({'y': [min_val], 'y2': [max_val]})).mark_rect(
+        color='#34C759', opacity=0.1
+    ).encode(y='y', y2='y2') if max_val > 0 else None
+
+    # 3. Gradient Area (The "Modern Look")
+    area = base.mark_area(
+        line={'color': '#007AFF'},
+        color=alt.Gradient(
+            gradient='linear',
+            stops=[alt.GradientStop(color='#007AFF', offset=0), alt.GradientStop(color='rgba(0, 122, 255, 0)', offset=1)],
+            x1=1, x2=1, y1=1, y2=0
+        ),
+        interpolate='monotone',
+        opacity=0.3
+    )
+
+    # 4. The Line (Thick & Smooth)
+    line = base.mark_line(
+        color='#007AFF', 
+        strokeWidth=3, 
+        interpolate='monotone'
+    )
+
+    # 5. The Points (Interactive White Dots)
+    points = base.mark_circle(
+        size=80, 
+        fill='white', 
+        stroke='#007AFF', 
+        strokeWidth=2, 
+        opacity=1
+    )
+
+    # 6. Events (Interventions)
+    event_layer = None
     if not events_df.empty:
-        rules = alt.Chart(events_df).mark_rule(color='red', strokeWidth=2, strokeDash=[5,5]).encode(
-            x='Date:T', tooltip=['Event', 'Notes']
-        )
-        text = alt.Chart(events_df).mark_text(
-            align='left', baseline='middle', dx=5, color='white', angle=270
+        # Vertical Rule
+        rules = alt.Chart(events_df).mark_rule(
+            color='#FF3B30', 
+            strokeWidth=1.5, 
+            strokeDash=[4,4]
         ).encode(
-            x='Date:T', text='Event', y=alt.value(20)
+            x='Date:T', 
+            tooltip=['Event', 'Notes']
         )
-        return (line + rules + text).properties(height=300).interactive()
-    
-    return line.properties(height=300).interactive()
+        
+        # Text Label (Rotated & Styled)
+        text = alt.Chart(events_df).mark_text(
+            align='left', 
+            baseline='middle', 
+            dx=7, 
+            dy=-100,
+            color='#FF3B30', 
+            angle=0,
+            fontSize=11,
+            fontWeight='bold'
+        ).encode(
+            x='Date:T', 
+            text='Event'
+        )
+        event_layer = rules + text
+
+    # Assemble Chart
+    final_chart = line + points + area
+    if bands: final_chart = bands + final_chart
+    if event_layer: final_chart = final_chart + event_layer
+
+    return final_chart.properties(height=350).configure_view(strokeWidth=0).interactive()
 
 # --- 6. MAIN APP ---
 master_df, results_df, events_df, status = load_data()
@@ -274,10 +333,10 @@ if mode == "Patient Overview":
     df_display = pd.DataFrame(processed_rows)
     if df_display.empty: st.warning("No matched biomarkers."); st.stop()
 
-    # Metrics Grid (RESTORED TESTED COUNT)
+    # Metrics Grid
     st.markdown("""<div class="stat-grid">""", unsafe_allow_html=True)
     metrics = [
-        ("Total Tested", len(df_display), "white"), # Restored!
+        ("Total Tested", len(df_display), "white"), 
         ("Optimal", stats['Blue'], "#007AFF"), 
         ("Normal", stats['Green'], "#34C759"), 
         ("Borderline", stats['Orange'], "#FF9500"), 
@@ -290,14 +349,10 @@ if mode == "Patient Overview":
     
     st.divider()
     
-    # SORTING LOGIC: Red -> Orange (Left), Blue -> Green (Right)
     c_warn, c_good = st.columns(2)
-    
     with c_warn:
         st.subheader("⚠️ Attention")
-        # Filter for Red (1) and Orange (2), Sort by Priority Ascending (1, then 2)
         bad_df = df_display[df_display['Priority'].isin([1, 2])].sort_values('Priority', ascending=True)
-        
         if bad_df.empty: st.markdown("✅ No Issues")
         for _, r in bad_df.iterrows():
             st.markdown(f"""
@@ -309,9 +364,7 @@ if mode == "Patient Overview":
 
     with c_good:
         st.subheader("✅ Optimized")
-        # Filter for Blue (3) and Green (4), Sort by Priority Ascending (3, then 4)
         good_df = df_display[df_display['Priority'].isin([3, 4])].sort_values('Priority', ascending=True)
-        
         for _, r in good_df.iterrows():
             st.markdown(f"""
             <div class="glass-card" style="border-left:4px solid {r['Color']}">
@@ -331,7 +384,8 @@ elif mode == "Trends (TRT View)":
     
     for m in selected_markers:
         st.markdown(f"### {m}")
-        chart = plot_clinical_trend(m, results_df, events_df)
+        # PASSING MASTER_DF FOR RANGES NOW
+        chart = plot_clinical_trend(m, results_df, events_df, master_df)
         if chart: st.altair_chart(chart, use_container_width=True)
         st.divider()
 
