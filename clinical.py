@@ -16,17 +16,17 @@ st.set_page_config(
     initial_sidebar_state="collapsed" 
 )
 
-# --- 2. CINEMATIC UI STYLING (The "Ferritin" Look) ---
+# --- 2. CINEMATIC UI STYLING ---
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap');
 
-    /* GLOBAL RESET & DARK MODE */
+    /* GLOBAL RESET */
     [data-testid="stAppViewContainer"] { background-color: #000000; color: #E4E4E7; font-family: 'Inter', sans-serif; }
     [data-testid="stHeader"] { display: none; }
     .block-container { padding-top: 2rem; padding-bottom: 5rem; }
 
-    /* --- NAVIGATION BAR --- */
+    /* NAVIGATION */
     [data-testid="stRadio"] > label { display: none; }
     div[role="radiogroup"] {
         flex-direction: row;
@@ -63,15 +63,14 @@ st.markdown("""
     }
     
     div[role="radiogroup"] label:hover { background-color: #18181B; cursor: pointer; }
-    
     div[role="radiogroup"] label[data-checked="true"] {
         background-color: #18181B;
         border: 1px solid #3F3F46;
-        box-shadow: 0 0 25px rgba(255, 255, 255, 0.05); /* Subtle white glow */
+        box-shadow: 0 0 25px rgba(255, 255, 255, 0.05);
     }
     div[role="radiogroup"] label[data-checked="true"] > div[data-testid="stMarkdownContainer"] > p { color: #FAFAFA; }
 
-    /* --- DROPDOWN --- */
+    /* DROPDOWN */
     div[data-baseweb="select"] > div {
         background-color: #09090B !important;
         border-color: #27272A !important;
@@ -87,7 +86,7 @@ st.markdown("""
     }
     .stSelectbox label { display: none; }
 
-    /* --- HUD CARD --- */
+    /* CARDS & ROWS */
     .hud-card {
         background: linear-gradient(180deg, rgba(24, 24, 27, 0.4) 0%, rgba(9, 9, 11, 0.4) 100%);
         backdrop-filter: blur(10px);
@@ -101,7 +100,6 @@ st.markdown("""
     .hud-val { font-family: 'JetBrains Mono', monospace; font-size: 32px; font-weight: 700; color: #FAFAFA; letter-spacing: -1.5px; }
     .hud-label { font-family: 'JetBrains Mono', monospace; font-size: 10px; text-transform: uppercase; letter-spacing: 1.5px; color: #52525B; margin-top: 8px; font-weight: 700; }
 
-    /* --- CLINICAL ROW --- */
     .clinical-row {
         background: rgba(15, 15, 17, 0.6);
         border-left: 2px solid #333;
@@ -117,7 +115,6 @@ st.markdown("""
     .c-sub { font-size: 11px; color: #52525B; margin-top: 4px; font-family: 'JetBrains Mono', monospace; }
     .c-value { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 16px; }
     
-    /* HEADERS */
     .section-header {
         font-family: 'JetBrains Mono', monospace; 
         font-size: 10px;
@@ -160,11 +157,18 @@ def get_google_sheet_client():
         except: return None
     else: return None
 
-# --- NEW: ULTRA-ROBUST CLEANER ---
+# --- UPDATED CLEANER (HANDLES "µ" and "PSA" issues) ---
 def clean_numeric_value(val):
     if pd.isna(val) or val == "": return None
-    s = str(val).strip()
-    s = s.replace('<', '').replace('>', '').replace(',', '').replace(' ', '')
+    # Convert to string and handle standard replacements
+    s = str(val).strip().replace(',', '').replace(' ', '')
+    # Handle the specific µ symbol which often breaks things
+    s = s.replace('µ', 'u').replace('ug/L', '').replace('ng/mL', '')
+    
+    # Remove inequality signs
+    s = s.replace('<', '').replace('>', '')
+    
+    # Find the number
     match = re.search(r"[-+]?\d*\.\d+|\d+", s)
     if match:
         try: return float(match.group())
@@ -178,7 +182,6 @@ def load_data():
     try:
         sh = client.open(SHEET_NAME)
         
-        # 1. Master Data
         try:
             ws_master = sh.worksheet("Master")
             m_data = ws_master.get_all_values()
@@ -186,26 +189,23 @@ def load_data():
         except:
             master = pd.DataFrame() 
 
-        # 2. Results Data
         try:
             ws_res = sh.worksheet("Results")
             data = ws_res.get_all_values()
             results = pd.DataFrame(data[1:], columns=data[0])
             results.columns = [c.strip() for c in results.columns] 
             
-            # --- AUTO DEDUPLICATION (THE DUPLICATE FIX) ---
+            # Deduplicate
             results = results.drop_duplicates(subset=['Date', 'Marker', 'Value'])
             
-            # --- UNIVERSAL DATE PARSER (THE BLANK GRAPH FIX) ---
-            # Tries multiple formats: YYYY-MM-DD, DD/MM/YYYY, MM/DD/YYYY
+            # Robust Date Parsing
             results['Date'] = pd.to_datetime(results['Date'], errors='coerce', dayfirst=True) 
             
-            # Clean Numbers
+            # Robust Number Cleaning
             results['NumericValue'] = results['Value'].apply(clean_numeric_value)
             
         except: results = pd.DataFrame()
 
-        # 3. Events Data
         try:
             ws_ev = sh.worksheet("Events")
             ev_data = ws_ev.get_all_values()
@@ -243,12 +243,7 @@ def process_csv_upload(uploaded_file):
             uploaded_file.seek(0)
             df = pd.read_csv(uploaded_file, encoding='ISO-8859-1')
             
-        # COLUMN MAPPING
-        col_map = {
-            'Biomarker': 'Marker', 'Test': 'Marker', 'Name': 'Marker',
-            'Result': 'Value', 'Reading': 'Value',
-            'Time': 'Date', 'Collected': 'Date'
-        }
+        col_map = {'Biomarker': 'Marker', 'Test': 'Marker', 'Name': 'Marker', 'Result': 'Value', 'Reading': 'Value', 'Time': 'Date', 'Collected': 'Date'}
         df = df.rename(columns=col_map)
         
         db_columns = ['Marker', 'Value', 'Unit', 'Flag', 'Date', 'Source']
@@ -313,32 +308,30 @@ def get_detailed_status(val, master_row, marker_name):
         return "IN RANGE", "#34D399", "c-green", rng_str, 4
     except: return "ERROR", "#71717A", "c-grey", "Error", 5
 
-# --- 6. CINEMATIC CHART ENGINE (ALTAIR) ---
+# --- 6. CINEMATIC CHART ENGINE (RED ZONES + HIGH VIS EVENTS) ---
 def plot_clinical_trend(marker_name, results_df, events_df, master_df):
-    # 1. Strict Matching & Cleaning
     clean_target = smart_clean(marker_name)
     results_df['MatchKey'] = results_df['Marker'].apply(smart_clean)
     chart_data = results_df[results_df['MatchKey'] == clean_target].copy()
-    
-    # 2. Filter Empty
     chart_data = chart_data.dropna(subset=['NumericValue', 'Date']).sort_values('Date')
     
-    # DEBUG: Diagnostic Info if empty
     if chart_data.empty: return "EMPTY"
 
-    # 3. Range
+    # Range
     min_val, max_val = 0, 0
     master_row = fuzzy_match(marker_name, master_df)
     if master_row is not None:
         min_val, max_val = parse_range(master_row['Standard Range'])
 
-    # 4. Color Logic (Ferritin Style)
-    theme_color = '#38BDF8' # Electric Blue Default
+    # Y-Axis padding calculation to ensure Red Zones are visible
+    data_max = chart_data['NumericValue'].max()
+    y_top = max(data_max, max_val) * 1.2
+    y_bottom = 0
 
-    # 5. Base Chart
+    # 1. Base
     base = alt.Chart(chart_data).encode(
         x=alt.X('Date:T', title=None, axis=alt.Axis(
-            format='%b %Y', 
+            format='%d %b %y', 
             labelColor='#71717A', 
             labelFont='JetBrains Mono',
             tickColor='#27272A', 
@@ -346,7 +339,7 @@ def plot_clinical_trend(marker_name, results_df, events_df, master_df):
             gridColor='#27272A',
             gridOpacity=0.2
         )),
-        y=alt.Y('NumericValue:Q', title=None, scale=alt.Scale(zero=False, padding=25), axis=alt.Axis(
+        y=alt.Y('NumericValue:Q', title=None, scale=alt.Scale(domain=[y_bottom, y_top]), axis=alt.Axis(
             labelColor='#71717A', 
             labelFont='JetBrains Mono',
             tickColor='#27272A', 
@@ -356,22 +349,22 @@ def plot_clinical_trend(marker_name, results_df, events_df, master_df):
         ))
     )
 
-    # 6. GLOW LAYER (Thick blurred line)
-    glow = base.mark_line(
-        color=theme_color, 
-        strokeWidth=8, 
-        opacity=0.2, 
-        interpolate='monotone'
-    )
+    # 2. RED DANGER ZONES (The fix for "Danger")
+    # Low Danger Zone (0 to min_val)
+    danger_low = alt.Chart(pd.DataFrame({'y': [0], 'y2': [min_val]})).mark_rect(
+        color='#EF4444', opacity=0.1 # Red
+    ).encode(y='y', y2='y2') if min_val > 0 else None
 
-    # 7. CORE LAYER (Sharp line)
-    line = base.mark_line(
-        color=theme_color, 
-        strokeWidth=3, 
-        interpolate='monotone'
-    )
+    # High Danger Zone (max_val to Top)
+    danger_high = alt.Chart(pd.DataFrame({'y': [max_val], 'y2': [y_top]})).mark_rect(
+        color='#EF4444', opacity=0.1 # Red
+    ).encode(y='y', y2='y2') if max_val > 0 else None
 
-    # 8. GRADIENT FILL
+    # 3. Chart Line
+    theme_color = '#38BDF8'
+    glow = base.mark_line(color=theme_color, strokeWidth=8, opacity=0.2, interpolate='monotone')
+    line = base.mark_line(color=theme_color, strokeWidth=3, interpolate='monotone')
+    
     area = base.mark_area(
         line=False,
         color=alt.Gradient(
@@ -383,29 +376,46 @@ def plot_clinical_trend(marker_name, results_df, events_df, master_df):
         interpolate='monotone'
     )
 
-    # 9. INTERACTIVE POINTS
+    # 4. Interactive Points
     nearest = alt.selection(type='single', nearest=True, on='mouseover', fields=['Date'], empty='none')
     points = base.mark_circle(size=80, fill='#000000', stroke=theme_color, strokeWidth=2).encode(
         opacity=alt.condition(nearest, alt.value(1), alt.value(0))
     ).add_selection(nearest)
 
-    # 10. EVENTS (Lollipops)
+    # 5. Tooltips
+    tooltips = base.mark_circle(opacity=0).encode(
+        tooltip=[
+            alt.Tooltip('Date:T', format='%d %b %Y'),
+            alt.Tooltip('NumericValue:Q', title=marker_name),
+            alt.Tooltip('Source')
+        ]
+    ).add_selection(nearest)
+
+    # 6. HIGH-VIS EVENTS (The fix for "Clear Interventions")
     event_layer = None
     if not events_df.empty:
-        # Simple rule for event
+        # Thick Orange Line
         ev_rule = alt.Chart(events_df).mark_rule(
-            color='#E4E4E7', strokeWidth=1, opacity=0.3, strokeDash=[4,4]
+            color='#F97316', strokeWidth=2, strokeDash=[4,4], opacity=0.8
         ).encode(x='Date:T')
         
-        # Text label at top
-        ev_text = alt.Chart(events_df).mark_text(
-            align='center', baseline='bottom', dy=-5,
-            color='#E4E4E7', font='JetBrains Mono', fontSize=10
-        ).encode(x='Date:T', y=alt.value(10), text='Event')
-        
-        event_layer = ev_rule + ev_text
+        # Big Orange Bubble
+        ev_bubble = alt.Chart(events_df).mark_point(
+            filled=True, fill='#09090B', stroke='#F97316', size=1500, shape='circle', strokeWidth=2
+        ).encode(x='Date:T', y=alt.value(30)) 
 
-    final = glow + area + line + points
+        # Bold Label inside bubble
+        ev_text = alt.Chart(events_df).mark_text(
+            align='center', baseline='middle',
+            color='#F97316', font='JetBrains Mono', fontSize=11, fontWeight=800, dy=0
+        ).encode(x='Date:T', y=alt.value(30), text='Event')
+        
+        event_layer = ev_rule + ev_bubble + ev_text
+
+    # Assemble
+    final = glow + area + line + points + tooltips
+    if danger_low: final = danger_low + final
+    if danger_high: final = danger_high + final
     if event_layer: final = final + event_layer
     
     return final.properties(height=320, background='transparent').configure_view(strokeWidth=0)
@@ -509,7 +519,6 @@ elif mode == "TREND ANALYSIS":
     st.markdown('<div class="section-header">Longitudinal Analysis</div>', unsafe_allow_html=True)
     if results_df.empty: st.warning("No Data."); st.stop()
     
-    # Clean markers for selection
     markers = sorted(results_df['Marker'].unique())
     defaults = [m for m in ["Total Testosterone", "Haematocrit", "Oestradiol"] if m in markers]
     selected_markers = st.multiselect("Select Biomarkers:", markers, default=defaults)
