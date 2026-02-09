@@ -15,53 +15,95 @@ st.set_page_config(
     initial_sidebar_state="collapsed" 
 )
 
-# --- 2. NEXT-GEN UI STYLING (HUD DESIGN) ---
+# --- 2. NEXT-GEN UI STYLING (The "Bloomberg" Look) ---
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap');
 
-    /* BASE THEME */
+    /* GLOBAL RESET */
     [data-testid="stAppViewContainer"] { background-color: #09090B; color: #E4E4E7; font-family: 'Inter', sans-serif; }
     [data-testid="stHeader"] { display: none; }
-    .block-container { padding-top: 1rem; padding-bottom: 5rem; }
+    .block-container { padding-top: 1.5rem; padding-bottom: 5rem; }
 
-    /* NAVIGATION BAR (The Slick Fix) */
+    /* --- THE NAVIGATION BAR (No more Radio Circles!) --- */
+    [data-testid="stRadio"] > label { display: none; } /* Hide label above */
     div[role="radiogroup"] {
+        flex-direction: row;
         background-color: #18181B;
-        padding: 6px;
-        border-radius: 12px;
+        padding: 4px;
+        border-radius: 10px;
         border: 1px solid #27272A;
-        margin-bottom: 25px;
+        width: 100%;
+        overflow: hidden;
     }
     div[role="radiogroup"] label {
         flex: 1;
-        text-align: center;
         background-color: transparent;
-        border: none;
-        transition: background 0.2s;
+        border: 1px solid transparent;
         border-radius: 8px;
+        margin: 0 2px;
+        padding: 8px 16px;
+        text-align: center;
+        transition: all 0.2s ease;
+        justify-content: center;
     }
+    /* HIDE the actual circle radio button */
+    div[role="radiogroup"] label > div:first-child { display: none; } 
+    
+    /* STYLE the text inside the label */
+    div[role="radiogroup"] label > div[data-testid="stMarkdownContainer"] > p {
+        font-family: 'Inter', sans-serif;
+        font-weight: 600;
+        font-size: 14px;
+        margin: 0;
+        color: #71717A; /* Inactive Text */
+    }
+    
+    /* HOVER STATE */
     div[role="radiogroup"] label:hover {
         background-color: #27272A;
+        cursor: pointer;
+    }
+    
+    /* CHECKED (ACTIVE) STATE - The "Glow" */
+    div[role="radiogroup"] label[data-checked="true"] {
+        background-color: #27272A;
+        border: 1px solid #3F3F46;
+    }
+    div[role="radiogroup"] label[data-checked="true"] > div[data-testid="stMarkdownContainer"] > p {
+        color: #FAFAFA; /* Active Text */
     }
 
-    /* HUD METRIC CARD */
+    /* --- THE DROPDOWN (Sleek Input) --- */
+    div[data-baseweb="select"] > div {
+        background-color: #18181B !important;
+        border-color: #27272A !important;
+        color: #FAFAFA !important;
+        border-radius: 8px !important;
+    }
+    div[data-baseweb="select"] span {
+        font-family: 'JetBrains Mono', monospace !important; 
+        color: #FAFAFA !important;
+    }
+    /* Hide the default label for clean look */
+    .stSelectbox label { display: none; }
+
+    /* --- HUD METRIC CARD --- */
     .hud-card {
         background: linear-gradient(145deg, rgba(39, 39, 42, 0.4) 0%, rgba(24, 24, 27, 0.4) 100%);
         backdrop-filter: blur(20px);
         border: 1px solid rgba(255, 255, 255, 0.08);
         border-radius: 16px;
-        padding: 16px;
+        padding: 20px;
         display: flex;
         flex-direction: column;
         align-items: center;
         transition: transform 0.2s;
     }
-    .hud-card:hover { border-color: rgba(255, 255, 255, 0.2); }
-    .hud-val { font-family: 'JetBrains Mono', monospace; font-size: 28px; font-weight: 700; color: #FAFAFA; letter-spacing: -1px; }
-    .hud-label { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #A1A1AA; margin-top: 4px; font-weight: 600; }
+    .hud-val { font-family: 'JetBrains Mono', monospace; font-size: 32px; font-weight: 700; color: #FAFAFA; letter-spacing: -1px; }
+    .hud-label { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #A1A1AA; margin-top: 6px; font-weight: 600; }
 
-    /* CLINICAL LIST CARD */
+    /* --- CLINICAL ROW --- */
     .clinical-row {
         background: rgba(255, 255, 255, 0.03);
         border-left: 4px solid #333;
@@ -71,16 +113,14 @@ st.markdown("""
         display: flex;
         justify-content: space-between;
         align-items: center;
-        transition: background 0.2s;
     }
-    .clinical-row:hover { background: rgba(255, 255, 255, 0.06); }
-    
-    .c-marker { font-weight: 600; font-size: 15px; color: #F4F4F5; }
+    .c-marker { font-family: 'Inter', sans-serif; font-weight: 600; font-size: 15px; color: #F4F4F5; }
     .c-sub { font-size: 11px; color: #71717A; margin-top: 2px; }
     .c-value { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 18px; }
     
-    /* SECTION HEADERS */
+    /* HEADERS */
     .section-header {
+        font-family: 'Inter', sans-serif;
         font-size: 12px;
         font-weight: 700;
         text-transform: uppercase;
@@ -89,32 +129,12 @@ st.markdown("""
         margin-bottom: 15px;
         border-bottom: 1px solid #27272A;
         padding-bottom: 5px;
-        margin-top: 20px;
+        margin-top: 10px;
     }
 
-    /* GRID LAYOUT */
-    .hud-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-        gap: 12px;
-        margin-bottom: 30px;
-    }
-    
-    /* BUTTONS */
-    div.stButton > button {
-        width: 100%;
-        background-color: #27272A;
-        color: white;
-        border: 1px solid #3F3F46;
-        border-radius: 8px;
-    }
-    div.stButton > button:hover {
-        background-color: #3F3F46;
-        border-color: #52525B;
-    }
-
-    /* UTILITIES */
-    .tag { padding: 4px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; text-transform: uppercase; }
+    /* UTILS */
+    .tag { padding: 4px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; text-transform: uppercase; font-family: 'JetBrains Mono', monospace; }
+    div.stButton > button { width: 100%; border-radius: 8px; font-family: 'Inter', sans-serif; font-weight: 600; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -287,7 +307,7 @@ def get_detailed_status(val, master_row, marker_name):
         return "IN RANGE", "#34C759", "c-green", rng_str, 4
     except: return "ERROR", "#8E8E93", "c-grey", "Error", 5
 
-# --- VISUALIZATION ENGINE (PRO UPGRADE) ---
+# --- VISUALIZATION ENGINE ---
 def plot_clinical_trend(marker_name, results_df, events_df, master_df):
     chart_data = results_df[results_df['Marker'] == marker_name].copy()
     if chart_data.empty: return None
@@ -298,7 +318,7 @@ def plot_clinical_trend(marker_name, results_df, events_df, master_df):
     if master_row is not None:
         min_val, max_val = parse_range(master_row['Standard Range'])
 
-    # 1. Base Layer (The Data)
+    # 1. Base Layer
     base = alt.Chart(chart_data).encode(
         x=alt.X('Date:T', title=None, axis=alt.Axis(format='%b %Y', labelColor='#71717A', tickColor='#27272A', domain=False, gridColor='#27272A')),
         y=alt.Y('NumericValue:Q', title=None, scale=alt.Scale(zero=False, padding=20), axis=alt.Axis(labelColor='#71717A', tickColor='#27272A', domain=False, gridColor='#27272A')),
@@ -309,12 +329,12 @@ def plot_clinical_trend(marker_name, results_df, events_df, master_df):
         ]
     )
 
-    # 2. Reference Band (Safety Corridor)
+    # 2. Reference Band
     bands = alt.Chart(pd.DataFrame({'y': [min_val], 'y2': [max_val]})).mark_rect(
         color='#10B981', opacity=0.08
     ).encode(y='y', y2='y2') if max_val > 0 else None
 
-    # 3. Gradient Area (The "Glow")
+    # 3. Gradient Area
     area = base.mark_area(
         line={'color': '#3B82F6'},
         color=alt.Gradient(
@@ -328,16 +348,16 @@ def plot_clinical_trend(marker_name, results_df, events_df, master_df):
     # 4. The Line
     line = base.mark_line(color='#3B82F6', strokeWidth=3)
 
-    # 5. Interactive Points
+    # 5. Points
     points = base.mark_circle(size=80, fill='#18181B', stroke='#3B82F6', strokeWidth=2)
 
-    # 6. Crosshair Selection
+    # 6. Crosshair
     nearest = alt.selection(type='single', nearest=True, on='mouseover', fields=['Date'], empty='none')
     rules = base.mark_rule(color='#52525B', strokeWidth=1).encode(
         opacity=alt.condition(nearest, alt.value(1), alt.value(0))
     ).add_selection(nearest)
 
-    # 7. Events (Interventions)
+    # 7. Events
     event_layer = None
     if not events_df.empty:
         ev_rule = alt.Chart(events_df).mark_rule(
@@ -364,7 +384,7 @@ master_df, results_df, events_df, status = load_data()
 st.markdown("""
 <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #333; padding-bottom:10px; margin-bottom:10px;">
     <div>
-        <h2 style="margin:0; font-family:'Inter'; letter-spacing:-1px;">HealthOS <span style="color:#71717A; font-weight:400;">Clinical</span></h2>
+        <h2 style="margin:0; font-family:'Inter'; font-weight:700; letter-spacing:-1px;">HealthOS <span style="color:#71717A; font-weight:400;">Clinical</span></h2>
     </div>
     <div style="text-align:right;">
          <span class="tag" style="background:#064E3B; color:#34D399; border:1px solid #059669;">Patient: Demo Mode</span>
@@ -372,7 +392,7 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# TOP NAVIGATION (THE FIX)
+# TOP NAVIGATION (THE FIX: TAB STYLE)
 mode = st.radio("Navigation", ["Dashboard", "Trend Analysis", "Protocol Log", "Data Tools"], horizontal=True, label_visibility="collapsed")
 
 # MODE 1: DASHBOARD
@@ -383,9 +403,11 @@ if mode == "Dashboard":
     unique_dates = sorted(results_df['Date'].dropna().unique(), reverse=True)
     date_options = [d.strftime('%Y-%m-%d') for d in unique_dates if pd.notna(d)]
     
+    # Custom Toolbar Container for the Dropdown
     c_sel, _ = st.columns([1, 3])
     with c_sel:
-        selected_label = st.selectbox("View Report:", date_options)
+        st.caption("REPORT DATE")
+        selected_label = st.selectbox("View Report:", date_options, label_visibility="collapsed")
     
     snapshot = results_df[results_df['Date'].astype(str).str.startswith(selected_label)].copy()
     processed_rows, stats = [], {"Blue": 0, "Green": 0, "Orange": 0, "Red": 0}
@@ -407,12 +429,16 @@ if mode == "Dashboard":
     if df_display.empty: st.warning("No matched biomarkers."); st.stop()
 
     # HUD GRID
-    st.markdown("""<div class="hud-grid">""", unsafe_allow_html=True)
+    st.markdown("""
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 30px; margin-top: 10px;">
+    """, unsafe_allow_html=True)
+    
     st.markdown(f"""<div class="hud-card"><div class="hud-val" style="color:#FAFAFA">{len(df_display)}</div><div class="hud-label">Total Tested</div></div>""", unsafe_allow_html=True)
     st.markdown(f"""<div class="hud-card"><div class="hud-val" style="color:#3B82F6">{stats['Blue']}</div><div class="hud-label">Optimal</div></div>""", unsafe_allow_html=True)
     st.markdown(f"""<div class="hud-card"><div class="hud-val" style="color:#10B981">{stats['Green']}</div><div class="hud-label">Normal</div></div>""", unsafe_allow_html=True)
     st.markdown(f"""<div class="hud-card"><div class="hud-val" style="color:#F59E0B">{stats['Orange']}</div><div class="hud-label">Borderline</div></div>""", unsafe_allow_html=True)
     st.markdown(f"""<div class="hud-card"><div class="hud-val" style="color:#EF4444">{stats['Red']}</div><div class="hud-label">Abnormal</div></div>""", unsafe_allow_html=True)
+    
     st.markdown("</div>", unsafe_allow_html=True)
     
     # LISTS
