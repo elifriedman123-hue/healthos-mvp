@@ -164,15 +164,11 @@ def get_google_sheet_client():
 def clean_numeric_value(val):
     if pd.isna(val) or val == "": return None
     s = str(val).strip()
-    # Remove common lab text
     s = s.replace('<', '').replace('>', '').replace(',', '').replace(' ', '')
-    # Regex to find the first valid number (integer or decimal)
     match = re.search(r"[-+]?\d*\.\d+|\d+", s)
     if match:
-        try:
-            return float(match.group())
-        except:
-            return None
+        try: return float(match.group())
+        except: return None
     return None
 
 @st.cache_data(ttl=5)
@@ -188,21 +184,23 @@ def load_data():
             m_data = ws_master.get_all_values()
             master = pd.DataFrame(m_data[1:], columns=m_data[0]) if len(m_data) > 1 else pd.DataFrame()
         except:
-            master = pd.DataFrame() # Fallback
+            master = pd.DataFrame() 
 
         # 2. Results Data
         try:
             ws_res = sh.worksheet("Results")
             data = ws_res.get_all_values()
             results = pd.DataFrame(data[1:], columns=data[0])
-            
-            # Critical: Standardize Columns
             results.columns = [c.strip() for c in results.columns] 
             
-            # Fix Dates
-            results['Date'] = pd.to_datetime(results['Date'], errors='coerce')
+            # --- AUTO DEDUPLICATION (THE DUPLICATE FIX) ---
+            results = results.drop_duplicates(subset=['Date', 'Marker', 'Value'])
             
-            # Fix Numbers (The Magic Fix)
+            # --- UNIVERSAL DATE PARSER (THE BLANK GRAPH FIX) ---
+            # Tries multiple formats: YYYY-MM-DD, DD/MM/YYYY, MM/DD/YYYY
+            results['Date'] = pd.to_datetime(results['Date'], errors='coerce', dayfirst=True) 
+            
+            # Clean Numbers
             results['NumericValue'] = results['Value'].apply(clean_numeric_value)
             
         except: results = pd.DataFrame()
@@ -212,7 +210,7 @@ def load_data():
             ws_ev = sh.worksheet("Events")
             ev_data = ws_ev.get_all_values()
             events = pd.DataFrame(ev_data[1:], columns=ev_data[0])
-            events['Date'] = pd.to_datetime(events['Date'], errors='coerce')
+            events['Date'] = pd.to_datetime(events['Date'], errors='coerce', dayfirst=True)
         except: 
             ws_ev = sh.add_worksheet("Events", 1000, 5)
             ws_ev.append_row(["Date", "Event", "Type", "Notes"])
@@ -245,8 +243,7 @@ def process_csv_upload(uploaded_file):
             uploaded_file.seek(0)
             df = pd.read_csv(uploaded_file, encoding='ISO-8859-1')
             
-        # COLUMN MAPPING (If user uploads different headers)
-        # Try to map to our DB schema: ['Marker', 'Value', 'Unit', 'Flag', 'Date', 'Source']
+        # COLUMN MAPPING
         col_map = {
             'Biomarker': 'Marker', 'Test': 'Marker', 'Name': 'Marker',
             'Result': 'Value', 'Reading': 'Value',
@@ -256,7 +253,7 @@ def process_csv_upload(uploaded_file):
         
         db_columns = ['Marker', 'Value', 'Unit', 'Flag', 'Date', 'Source']
         for col in db_columns:
-            if col not in df.columns: df[col] = "" # Fill missing
+            if col not in df.columns: df[col] = "" 
             
         df_final = df[db_columns]
         
@@ -265,7 +262,6 @@ def process_csv_upload(uploaded_file):
         try: ws = sh.worksheet("Results")
         except: ws = sh.add_worksheet("Results", 1000, 10); ws.append_row(db_columns)
 
-        # Upload as strings to preserve data
         ws.append_rows(df_final.astype(str).values.tolist())
         st.cache_data.clear()
         return "Success"
@@ -295,7 +291,6 @@ def parse_range(range_str):
     return 0, 0
 
 def get_detailed_status(val, master_row, marker_name):
-    # (Same logic as before, just kept compact)
     try:
         s_min, s_max = parse_range(master_row['Standard Range'])
         try: o_min = float(str(master_row['Optimal Min']).replace(',', '.'))
@@ -318,36 +313,29 @@ def get_detailed_status(val, master_row, marker_name):
         return "IN RANGE", "#34D399", "c-green", rng_str, 4
     except: return "ERROR", "#71717A", "c-grey", "Error", 5
 
-# --- 6. CINEMATIC CHART ENGINE (ALTAIR GLOW) ---
+# --- 6. CINEMATIC CHART ENGINE (ALTAIR) ---
 def plot_clinical_trend(marker_name, results_df, events_df, master_df):
-    # 1. Filter Data (Robust)
-    # Using strict string matching or relaxed? Let's use clean matching
+    # 1. Strict Matching & Cleaning
     clean_target = smart_clean(marker_name)
-    
-    # Create a temp column for matching
     results_df['MatchKey'] = results_df['Marker'].apply(smart_clean)
     chart_data = results_df[results_df['MatchKey'] == clean_target].copy()
     
-    # Drop invalid values
+    # 2. Filter Empty
     chart_data = chart_data.dropna(subset=['NumericValue', 'Date']).sort_values('Date')
     
-    # DEBUG: IF EMPTY, RETURN DIAGNOSTIC
-    if chart_data.empty:
-        return "EMPTY"
+    # DEBUG: Diagnostic Info if empty
+    if chart_data.empty: return "EMPTY"
 
-    # 2. Get Range
+    # 3. Range
     min_val, max_val = 0, 0
     master_row = fuzzy_match(marker_name, master_df)
     if master_row is not None:
         min_val, max_val = parse_range(master_row['Standard Range'])
 
-    # 3. Dynamic Color (Ferritin Style)
-    # Pick color based on marker name hash to give variety
-    colors = ['#38BDF8', '#818CF8', '#34D399', '#F472B6']
-    color_idx = len(marker_name) % len(colors)
-    theme_color = colors[color_idx]
+    # 4. Color Logic (Ferritin Style)
+    theme_color = '#38BDF8' # Electric Blue Default
 
-    # 4. Base Chart
+    # 5. Base Chart
     base = alt.Chart(chart_data).encode(
         x=alt.X('Date:T', title=None, axis=alt.Axis(
             format='%b %Y', 
@@ -368,7 +356,7 @@ def plot_clinical_trend(marker_name, results_df, events_df, master_df):
         ))
     )
 
-    # 5. GLOW LAYER (Thick, blurred line behind)
+    # 6. GLOW LAYER (Thick blurred line)
     glow = base.mark_line(
         color=theme_color, 
         strokeWidth=8, 
@@ -376,14 +364,14 @@ def plot_clinical_trend(marker_name, results_df, events_df, master_df):
         interpolate='monotone'
     )
 
-    # 6. CORE LAYER (Sharp line)
+    # 7. CORE LAYER (Sharp line)
     line = base.mark_line(
         color=theme_color, 
         strokeWidth=3, 
         interpolate='monotone'
     )
 
-    # 7. GRADIENT FILL
+    # 8. GRADIENT FILL
     area = base.mark_area(
         line=False,
         color=alt.Gradient(
@@ -395,41 +383,29 @@ def plot_clinical_trend(marker_name, results_df, events_df, master_df):
         interpolate='monotone'
     )
 
-    # 8. Interactive Points (Only on hover)
+    # 9. INTERACTIVE POINTS
     nearest = alt.selection(type='single', nearest=True, on='mouseover', fields=['Date'], empty='none')
     points = base.mark_circle(size=80, fill='#000000', stroke=theme_color, strokeWidth=2).encode(
         opacity=alt.condition(nearest, alt.value(1), alt.value(0))
     ).add_selection(nearest)
 
-    # 9. Tooltips
-    tooltips = base.mark_circle(opacity=0).encode(
-        tooltip=[
-            alt.Tooltip('Date:T', format='%d %b %Y'),
-            alt.Tooltip('NumericValue:Q', title=marker_name),
-            alt.Tooltip('Source')
-        ]
-    ).add_selection(nearest)
-
-    # 10. Events
+    # 10. EVENTS (Lollipops)
     event_layer = None
     if not events_df.empty:
-        # Snap events to data (optional, just draw lines for now)
+        # Simple rule for event
         ev_rule = alt.Chart(events_df).mark_rule(
             color='#E4E4E7', strokeWidth=1, opacity=0.3, strokeDash=[4,4]
         ).encode(x='Date:T')
         
-        ev_bubble = alt.Chart(events_df).mark_point(
-            filled=True, fill='#09090B', stroke='#E4E4E7', size=500, shape='rect'
-        ).encode(x='Date:T', y=alt.value(20)) # Top
-
+        # Text label at top
         ev_text = alt.Chart(events_df).mark_text(
-            align='center', baseline='middle',
+            align='center', baseline='bottom', dy=-5,
             color='#E4E4E7', font='JetBrains Mono', fontSize=10
-        ).encode(x='Date:T', y=alt.value(20), text='Event')
+        ).encode(x='Date:T', y=alt.value(10), text='Event')
         
-        event_layer = ev_rule + ev_bubble + ev_text
+        event_layer = ev_rule + ev_text
 
-    final = glow + area + line + points + tooltips
+    final = glow + area + line + points
     if event_layer: final = final + event_layer
     
     return final.properties(height=320, background='transparent').configure_view(strokeWidth=0)
@@ -542,9 +518,7 @@ elif mode == "TREND ANALYSIS":
         st.markdown(f"#### {m}")
         chart = plot_clinical_trend(m, results_df, events_df, master_df)
         if chart == "EMPTY":
-            st.error(f"No numeric data found for {m}. Check the data format.")
-            with st.expander("Diagnostic Data"):
-                st.write(results_df[results_df['Marker']==m])
+            st.warning(f"No valid numeric data found for {m}.")
         elif chart: 
             st.altair_chart(chart, use_container_width=True)
         st.markdown("<br>", unsafe_allow_html=True)
