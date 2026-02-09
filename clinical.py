@@ -15,7 +15,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed" 
 )
 
-# --- 2. NEXT-GEN UI STYLING (The "Bloomberg" Look) ---
+# --- 2. NEXT-GEN UI STYLING ---
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap');
@@ -25,8 +25,8 @@ st.markdown("""
     [data-testid="stHeader"] { display: none; }
     .block-container { padding-top: 1.5rem; padding-bottom: 5rem; }
 
-    /* --- THE NAVIGATION BAR (No more Radio Circles!) --- */
-    [data-testid="stRadio"] > label { display: none; } /* Hide label above */
+    /* --- NAVIGATION BAR (CAPS & SINGLE LINE) --- */
+    [data-testid="stRadio"] > label { display: none; }
     div[role="radiogroup"] {
         flex-direction: row;
         background-color: #18181B;
@@ -34,7 +34,8 @@ st.markdown("""
         border-radius: 10px;
         border: 1px solid #27272A;
         width: 100%;
-        overflow: hidden;
+        overflow-x: auto; /* Allow scroll if screen is too tiny */
+        white-space: nowrap; /* FORCE SINGLE LINE */
     }
     div[role="radiogroup"] label {
         flex: 1;
@@ -47,34 +48,33 @@ st.markdown("""
         transition: all 0.2s ease;
         justify-content: center;
     }
-    /* HIDE the actual circle radio button */
     div[role="radiogroup"] label > div:first-child { display: none; } 
     
-    /* STYLE the text inside the label */
     div[role="radiogroup"] label > div[data-testid="stMarkdownContainer"] > p {
         font-family: 'Inter', sans-serif;
         font-weight: 600;
-        font-size: 14px;
+        font-size: 13px;
         margin: 0;
-        color: #71717A; /* Inactive Text */
+        color: #71717A; 
+        text-transform: uppercase; /* FORCE CAPS */
+        letter-spacing: 0.5px;
+        white-space: nowrap; /* FORCE SINGLE LINE */
     }
     
-    /* HOVER STATE */
     div[role="radiogroup"] label:hover {
         background-color: #27272A;
         cursor: pointer;
     }
     
-    /* CHECKED (ACTIVE) STATE - The "Glow" */
     div[role="radiogroup"] label[data-checked="true"] {
         background-color: #27272A;
         border: 1px solid #3F3F46;
     }
     div[role="radiogroup"] label[data-checked="true"] > div[data-testid="stMarkdownContainer"] > p {
-        color: #FAFAFA; /* Active Text */
+        color: #FAFAFA;
     }
 
-    /* --- THE DROPDOWN (Sleek Input) --- */
+    /* --- DROPDOWN (Sleek) --- */
     div[data-baseweb="select"] > div {
         background-color: #18181B !important;
         border-color: #27272A !important;
@@ -85,7 +85,6 @@ st.markdown("""
         font-family: 'JetBrains Mono', monospace !important; 
         color: #FAFAFA !important;
     }
-    /* Hide the default label for clean look */
     .stSelectbox label { display: none; }
 
     /* --- HUD METRIC CARD --- */
@@ -320,7 +319,7 @@ def plot_clinical_trend(marker_name, results_df, events_df, master_df):
 
     # 1. Base Layer
     base = alt.Chart(chart_data).encode(
-        x=alt.X('Date:T', title=None, axis=alt.Axis(format='%b %Y', labelColor='#71717A', tickColor='#27272A', domain=False, gridColor='#27272A')),
+        x=alt.X('Date:T', title=None, axis=alt.Axis(format='%d %b %Y', labelColor='#71717A', tickColor='#27272A', domain=False, gridColor='#27272A')),
         y=alt.Y('NumericValue:Q', title=None, scale=alt.Scale(zero=False, padding=20), axis=alt.Axis(labelColor='#71717A', tickColor='#27272A', domain=False, gridColor='#27272A')),
         tooltip=[
             alt.Tooltip('Date:T', format='%d %b %Y'),
@@ -392,7 +391,7 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# TOP NAVIGATION (THE FIX: TAB STYLE)
+# TOP NAVIGATION (CAPS + SINGLE LINE)
 mode = st.radio("Navigation", ["Dashboard", "Trend Analysis", "Protocol Log", "Data Tools"], horizontal=True, label_visibility="collapsed")
 
 # MODE 1: DASHBOARD
@@ -401,15 +400,18 @@ if mode == "Dashboard":
         st.info("No Data Loaded. Go to 'Data Tools' to upload."); st.stop()
     
     unique_dates = sorted(results_df['Date'].dropna().unique(), reverse=True)
-    date_options = [d.strftime('%Y-%m-%d') for d in unique_dates if pd.notna(d)]
-    
+    # FORMAT DATE: 15 Jul 2024
+    date_options = [d.strftime('%d %b %Y') for d in unique_dates if pd.notna(d)]
+    date_map = {d.strftime('%d %b %Y'): d.strftime('%Y-%m-%d') for d in unique_dates if pd.notna(d)}
+
     # Custom Toolbar Container for the Dropdown
     c_sel, _ = st.columns([1, 3])
     with c_sel:
         st.caption("REPORT DATE")
-        selected_label = st.selectbox("View Report:", date_options, label_visibility="collapsed")
+        selected_display = st.selectbox("View Report:", date_options, label_visibility="collapsed")
+        selected_db_val = date_map.get(selected_display)
     
-    snapshot = results_df[results_df['Date'].astype(str).str.startswith(selected_label)].copy()
+    snapshot = results_df[results_df['Date'].astype(str).str.startswith(selected_db_val)].copy()
     processed_rows, stats = [], {"Blue": 0, "Green": 0, "Orange": 0, "Red": 0}
     
     for _, row in snapshot.iterrows():
@@ -433,11 +435,11 @@ if mode == "Dashboard":
     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 30px; margin-top: 10px;">
     """, unsafe_allow_html=True)
     
-    st.markdown(f"""<div class="hud-card"><div class="hud-val" style="color:#FAFAFA">{len(df_display)}</div><div class="hud-label">Total Tested</div></div>""", unsafe_allow_html=True)
-    st.markdown(f"""<div class="hud-card"><div class="hud-val" style="color:#3B82F6">{stats['Blue']}</div><div class="hud-label">Optimal</div></div>""", unsafe_allow_html=True)
-    st.markdown(f"""<div class="hud-card"><div class="hud-val" style="color:#10B981">{stats['Green']}</div><div class="hud-label">Normal</div></div>""", unsafe_allow_html=True)
-    st.markdown(f"""<div class="hud-card"><div class="hud-val" style="color:#F59E0B">{stats['Orange']}</div><div class="hud-label">Borderline</div></div>""", unsafe_allow_html=True)
-    st.markdown(f"""<div class="hud-card"><div class="hud-val" style="color:#EF4444">{stats['Red']}</div><div class="hud-label">Abnormal</div></div>""", unsafe_allow_html=True)
+    st.markdown(f"""<div class="hud-card"><div class="hud-val" style="color:#FAFAFA">{len(df_display)}</div><div class="hud-label">TOTAL TESTED</div></div>""", unsafe_allow_html=True)
+    st.markdown(f"""<div class="hud-card"><div class="hud-val" style="color:#3B82F6">{stats['Blue']}</div><div class="hud-label">OPTIMAL</div></div>""", unsafe_allow_html=True)
+    st.markdown(f"""<div class="hud-card"><div class="hud-val" style="color:#10B981">{stats['Green']}</div><div class="hud-label">NORMAL</div></div>""", unsafe_allow_html=True)
+    st.markdown(f"""<div class="hud-card"><div class="hud-val" style="color:#F59E0B">{stats['Orange']}</div><div class="hud-label">BORDERLINE</div></div>""", unsafe_allow_html=True)
+    st.markdown(f"""<div class="hud-card"><div class="hud-val" style="color:#EF4444">{stats['Red']}</div><div class="hud-label">ABNORMAL</div></div>""", unsafe_allow_html=True)
     
     st.markdown("</div>", unsafe_allow_html=True)
     
