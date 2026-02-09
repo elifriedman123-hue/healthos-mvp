@@ -15,7 +15,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed" 
 )
 
-# --- 2. NEXT-GEN UI STYLING ---
+# --- 2. NEXT-GEN UI STYLING (TERMINAL MODE) ---
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap');
@@ -25,7 +25,7 @@ st.markdown("""
     [data-testid="stHeader"] { display: none; }
     .block-container { padding-top: 1.5rem; padding-bottom: 5rem; }
 
-    /* --- NAVIGATION BAR (CAPS & SINGLE LINE) --- */
+    /* --- NAVIGATION BAR (THE "COOL" FONT UPDATE) --- */
     [data-testid="stRadio"] > label { display: none; }
     div[role="radiogroup"] {
         flex-direction: row;
@@ -34,8 +34,8 @@ st.markdown("""
         border-radius: 10px;
         border: 1px solid #27272A;
         width: 100%;
-        overflow-x: auto; /* Allow scroll if screen is too tiny */
-        white-space: nowrap; /* FORCE SINGLE LINE */
+        overflow-x: auto;
+        white-space: nowrap;
     }
     div[role="radiogroup"] label {
         flex: 1;
@@ -50,15 +50,16 @@ st.markdown("""
     }
     div[role="radiogroup"] label > div:first-child { display: none; } 
     
+    /* APPLY JETBRAINS MONO TO NAV */
     div[role="radiogroup"] label > div[data-testid="stMarkdownContainer"] > p {
-        font-family: 'Inter', sans-serif;
-        font-weight: 600;
-        font-size: 13px;
+        font-family: 'JetBrains Mono', monospace !important; /* THE COOL FONT */
+        font-weight: 700;
+        font-size: 12px;
         margin: 0;
         color: #71717A; 
-        text-transform: uppercase; /* FORCE CAPS */
-        letter-spacing: 0.5px;
-        white-space: nowrap; /* FORCE SINGLE LINE */
+        text-transform: uppercase; 
+        letter-spacing: 1px; /* THE WIDE SPACING */
+        white-space: nowrap;
     }
     
     div[role="radiogroup"] label:hover {
@@ -74,17 +75,22 @@ st.markdown("""
         color: #FAFAFA;
     }
 
-    /* --- DROPDOWN (Sleek) --- */
+    /* --- DROPDOWN (MATCHING THE FONT) --- */
     div[data-baseweb="select"] > div {
         background-color: #18181B !important;
         border-color: #27272A !important;
         color: #FAFAFA !important;
         border-radius: 8px !important;
     }
+    /* Force the selected value to be JETBRAINS MONO + UPPERCASE */
     div[data-baseweb="select"] span {
         font-family: 'JetBrains Mono', monospace !important; 
         color: #FAFAFA !important;
+        text-transform: uppercase !important;
+        letter-spacing: 1px !important;
+        font-size: 13px !important;
     }
+    /* Hide the default label for clean look */
     .stSelectbox label { display: none; }
 
     /* --- HUD METRIC CARD --- */
@@ -100,7 +106,7 @@ st.markdown("""
         transition: transform 0.2s;
     }
     .hud-val { font-family: 'JetBrains Mono', monospace; font-size: 32px; font-weight: 700; color: #FAFAFA; letter-spacing: -1px; }
-    .hud-label { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #A1A1AA; margin-top: 6px; font-weight: 600; }
+    .hud-label { font-family: 'JetBrains Mono', monospace; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #A1A1AA; margin-top: 6px; font-weight: 700; }
 
     /* --- CLINICAL ROW --- */
     .clinical-row {
@@ -119,11 +125,11 @@ st.markdown("""
     
     /* HEADERS */
     .section-header {
-        font-family: 'Inter', sans-serif;
-        font-size: 12px;
+        font-family: 'JetBrains Mono', monospace; /* UPDATED HEADER FONT */
+        font-size: 11px;
         font-weight: 700;
         text-transform: uppercase;
-        letter-spacing: 1.5px;
+        letter-spacing: 1px;
         color: #52525B;
         margin-bottom: 15px;
         border-bottom: 1px solid #27272A;
@@ -391,7 +397,7 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# TOP NAVIGATION (CAPS + SINGLE LINE)
+# TOP NAVIGATION (CAPS + MONO FONT)
 mode = st.radio("Navigation", ["Dashboard", "Trend Analysis", "Protocol Log", "Data Tools"], horizontal=True, label_visibility="collapsed")
 
 # MODE 1: DASHBOARD
@@ -400,9 +406,9 @@ if mode == "Dashboard":
         st.info("No Data Loaded. Go to 'Data Tools' to upload."); st.stop()
     
     unique_dates = sorted(results_df['Date'].dropna().unique(), reverse=True)
-    # FORMAT DATE: 15 Jul 2024
-    date_options = [d.strftime('%d %b %Y') for d in unique_dates if pd.notna(d)]
-    date_map = {d.strftime('%d %b %Y'): d.strftime('%Y-%m-%d') for d in unique_dates if pd.notna(d)}
+    # FORCE UPPERCASE DATE: 15 JUL 2024
+    date_options = [d.strftime('%d %b %Y').upper() for d in unique_dates if pd.notna(d)]
+    date_map = {d.strftime('%d %b %Y').upper(): d.strftime('%Y-%m-%d') for d in unique_dates if pd.notna(d)}
 
     # Custom Toolbar Container for the Dropdown
     c_sel, _ = st.columns([1, 3])
