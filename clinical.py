@@ -6,7 +6,8 @@ import json
 import os
 import re
 from difflib import SequenceMatcher
-from streamlit_echarts import st_echarts # THE NEW CINEMATIC ENGINE
+from streamlit_echarts import st_echarts
+from datetime import datetime
 
 # --- 1. CONFIGURATION ---
 st.set_page_config(
@@ -15,13 +16,13 @@ st.set_page_config(
     initial_sidebar_state="collapsed" 
 )
 
-# --- 2. NEXT-GEN UI STYLING ---
+# --- 2. UI STYLING (Cinematic Dark Mode) ---
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap');
 
     /* GLOBAL RESET */
-    [data-testid="stAppViewContainer"] { background-color: #050505; color: #E4E4E7; font-family: 'Inter', sans-serif; }
+    [data-testid="stAppViewContainer"] { background-color: #000000; color: #E4E4E7; font-family: 'Inter', sans-serif; }
     [data-testid="stHeader"] { display: none; }
     .block-container { padding-top: 1.5rem; padding-bottom: 5rem; }
 
@@ -29,14 +30,13 @@ st.markdown("""
     [data-testid="stRadio"] > label { display: none; }
     div[role="radiogroup"] {
         flex-direction: row;
-        background-color: #0F0F11;
+        background-color: #09090B;
         padding: 4px;
         border-radius: 12px;
-        border: 1px solid #1E1E20;
+        border: 1px solid #27272A;
         width: 100%;
         overflow-x: auto;
         white-space: nowrap;
-        box-shadow: 0 4px 20px rgba(0,0,0,0.5);
     }
     div[role="radiogroup"] label {
         flex: 1;
@@ -63,17 +63,18 @@ st.markdown("""
     }
     
     div[role="radiogroup"] label:hover { background-color: #18181B; cursor: pointer; }
+    
     div[role="radiogroup"] label[data-checked="true"] {
         background-color: #18181B;
-        border: 1px solid #27272A;
-        box-shadow: 0 0 15px rgba(255, 255, 255, 0.03);
+        border: 1px solid #3F3F46;
+        box-shadow: 0 0 20px rgba(56, 189, 248, 0.05); /* Subtle Blue Glow */
     }
     div[role="radiogroup"] label[data-checked="true"] > div[data-testid="stMarkdownContainer"] > p { color: #FAFAFA; }
 
     /* --- DROPDOWN --- */
     div[data-baseweb="select"] > div {
-        background-color: #0F0F11 !important;
-        border-color: #1E1E20 !important;
+        background-color: #09090B !important;
+        border-color: #27272A !important;
         color: #FAFAFA !important;
         border-radius: 8px !important;
     }
@@ -86,9 +87,9 @@ st.markdown("""
     }
     .stSelectbox label { display: none; }
 
-    /* --- HUD CARD (GLASS) --- */
+    /* --- HUD CARD --- */
     .hud-card {
-        background: linear-gradient(180deg, rgba(24, 24, 27, 0.6) 0%, rgba(9, 9, 11, 0.6) 100%);
+        background: linear-gradient(180deg, rgba(24, 24, 27, 0.4) 0%, rgba(9, 9, 11, 0.4) 100%);
         backdrop-filter: blur(10px);
         border: 1px solid rgba(255, 255, 255, 0.05);
         border-radius: 16px;
@@ -96,9 +97,8 @@ st.markdown("""
         display: flex;
         flex-direction: column;
         align-items: center;
-        box-shadow: 0 4px 30px rgba(0, 0, 0, 0.3);
     }
-    .hud-val { font-family: 'JetBrains Mono', monospace; font-size: 32px; font-weight: 700; color: #FAFAFA; letter-spacing: -1.5px; text-shadow: 0 0 20px rgba(255,255,255,0.1); }
+    .hud-val { font-family: 'JetBrains Mono', monospace; font-size: 32px; font-weight: 700; color: #FAFAFA; letter-spacing: -1.5px; }
     .hud-label { font-family: 'JetBrains Mono', monospace; font-size: 10px; text-transform: uppercase; letter-spacing: 1.5px; color: #52525B; margin-top: 8px; font-weight: 700; }
 
     /* --- CLINICAL ROW --- */
@@ -134,7 +134,6 @@ st.markdown("""
     /* UTILS */
     .tag { padding: 4px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; text-transform: uppercase; font-family: 'JetBrains Mono', monospace; }
     div.stButton > button { width: 100%; border-radius: 8px; font-family: 'Inter', sans-serif; font-weight: 600; background: #18181B; border: 1px solid #27272A; color: #A1A1AA; }
-    div.stButton > button:hover { border-color: #52525B; color: white; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -303,12 +302,12 @@ def get_detailed_status(val, master_row, marker_name):
         return "IN RANGE", "#34D399", "c-green", rng_str, 4
     except: return "ERROR", "#71717A", "c-grey", "Error", 5
 
-# --- 6. THE CINEMATIC CHART ENGINE (ECHARTS) ---
+# --- 6. THE CINEMATIC CHART ENGINE (V2 - FIXED EVENTS & CLUTTER) ---
 def render_cinematic_chart(marker_name, results_df, events_df, master_df):
     chart_data = results_df[results_df['Marker'] == marker_name].sort_values('Date').copy()
     if chart_data.empty: return
 
-    # Prepare Data for ECharts
+    # Prepare Data
     dates = chart_data['Date'].dt.strftime('%Y-%m-%d').tolist()
     values = chart_data['NumericValue'].tolist()
     
@@ -322,31 +321,37 @@ def render_cinematic_chart(marker_name, results_df, events_df, master_df):
     mark_area_data = []
     if max_val > 0:
         mark_area_data = [
-            [{"yAxis": min_val, "itemStyle": {"color": "rgba(34, 197, 94, 0.05)"}}, {"yAxis": max_val}]
+            [{"yAxis": min_val, "itemStyle": {"color": "rgba(34, 197, 94, 0.03)"}}, {"yAxis": max_val}]
         ]
 
-    # Build Events (The "Lollipop" Pins)
+    # Build Events (The "Lollipop" Pins) - FIXED DATE SNAPPING
     mark_line_data = []
     if not events_df.empty:
         for _, row in events_df.iterrows():
-            d_str = row['Date'].strftime('%Y-%m-%d')
+            # Logic: Find the CLOSEST date in the chart data to snap the event to
+            # This prevents events from disappearing if the date isn't exact
+            event_date = row['Date']
+            closest_date = min(chart_data['Date'], key=lambda x: abs(x - event_date))
+            d_str = closest_date.strftime('%Y-%m-%d')
+            
             label = row['Event']
             # Add a vertical line for each event
             mark_line_data.append({
                 "xAxis": d_str,
                 "label": {
                     "formatter": f"{label}",
-                    "position": "end",
+                    "position": "insideEndTop",
                     "color": "#E4E4E7",
                     "fontFamily": "JetBrains Mono",
                     "fontSize": 10,
                     "backgroundColor": "#18181B",
-                    "padding": [4, 8],
+                    "padding": [6, 10],
                     "borderRadius": 4,
                     "borderColor": "#3F3F46",
-                    "borderWidth": 1
+                    "borderWidth": 1,
+                    "distance": 10
                 },
-                "lineStyle": {"color": "#6366F1", "type": "solid", "width": 2} # Indigo color for events
+                "lineStyle": {"color": "#6366F1", "type": "solid", "width": 2, "opacity": 0.6}
             })
 
     # THE ECHARTS CONFIG (JSON)
@@ -354,58 +359,54 @@ def render_cinematic_chart(marker_name, results_df, events_df, master_df):
         "backgroundColor": "transparent",
         "tooltip": {
             "trigger": "axis",
-            "backgroundColor": "rgba(24, 24, 27, 0.9)",
-            "borderColor": "#3F3F46",
-            "textStyle": {"color": "#fff", "fontFamily": "Inter"},
-            "padding": 12
+            "backgroundColor": "rgba(9, 9, 11, 0.8)",
+            "borderColor": "#27272A",
+            "textStyle": {"color": "#FAFAFA", "fontFamily": "JetBrains Mono"},
+            "padding": 16,
+            "borderRadius": 8,
+            "backdropFilter": "blur(4px)"
         },
-        "grid": {"left": "2%", "right": "5%", "bottom": "15%", "top": "15%", "containLabel": True},
+        "grid": {"left": "1%", "right": "3%", "bottom": "5%", "top": "15%", "containLabel": True},
         "xAxis": {
             "type": "category",
             "boundaryGap": False,
             "data": dates,
             "axisLine": {"show": False},
             "axisTick": {"show": False},
-            "axisLabel": {"color": "#71717A", "fontFamily": "JetBrains Mono", "margin": 15}
+            "axisLabel": {
+                "color": "#52525B", 
+                "fontFamily": "JetBrains Mono", 
+                "margin": 20,
+                "formatter": "{value}" 
+            }
         },
         "yAxis": {
             "type": "value",
-            "splitLine": {"show": True, "lineStyle": {"color": "#27272A", "type": "dashed"}},
+            "scale": True, # PREVENTS FLAT LINES
+            "splitLine": {"show": True, "lineStyle": {"color": "#18181B", "width": 1}}, # SUBTLE GRID
             "axisLabel": {"color": "#52525B", "fontFamily": "JetBrains Mono"}
         },
-        "dataZoom": [{
-            "type": "slider",
-            "show": True,
-            "backgroundColor": "#18181B",
-            "borderColor": "transparent",
-            "fillerColor": "rgba(56, 189, 248, 0.2)",
-            "handleStyle": {"color": "#38BDF8"},
-            "textStyle": {"color": "#71717A"},
-            "height": 20,
-            "bottom": 0
-        }],
         "series": [
             {
                 "name": marker_name,
                 "type": "line",
-                "smooth": 0.4, # THE CURVE
+                "smooth": 0.5, # SMOOTHER CURVES
                 "symbol": "circle",
-                "symbolSize": 12,
-                "showSymbol": True,
-                "itemStyle": {"color": "#09090B", "borderColor": "#38BDF8", "borderWidth": 3},
+                "symbolSize": 8,
+                "showSymbol": False, # HIDE DOTS (Only show on hover)
+                "itemStyle": {"color": "#000000", "borderColor": "#38BDF8", "borderWidth": 2},
                 "lineStyle": {
-                    "width": 4,
-                    "color": "#38BDF8", # Electric Blue
-                    "shadowColor": "rgba(56, 189, 248, 0.5)", # THE GLOW
-                    "shadowBlur": 15,
-                    "shadowOffsetY": 5
+                    "width": 3,
+                    "color": "#38BDF8",
+                    "shadowColor": "rgba(56, 189, 248, 0.6)", # STRONGER GLOW
+                    "shadowBlur": 20
                 },
                 "areaStyle": {
                     "color": {
                         "type": "linear",
                         "x": 0, "y": 0, "x2": 0, "y2": 1,
                         "colorStops": [
-                            {"offset": 0, "color": "rgba(56, 189, 248, 0.4)"}, 
+                            {"offset": 0, "color": "rgba(56, 189, 248, 0.2)"}, 
                             {"offset": 1, "color": "rgba(56, 189, 248, 0)"}
                         ]
                     }
@@ -414,7 +415,8 @@ def render_cinematic_chart(marker_name, results_df, events_df, master_df):
                 "markLine": {
                     "symbol": ["none", "none"],
                     "data": mark_line_data,
-                    "silent": True
+                    "silent": True,
+                    "animation": False
                 },
                 "markArea": {
                     "silent": True,
@@ -424,7 +426,7 @@ def render_cinematic_chart(marker_name, results_df, events_df, master_df):
         ]
     }
     
-    st_echarts(options=option, height="400px")
+    st_echarts(options=option, height="350px")
 
 # --- 7. MAIN APP ---
 master_df, results_df, events_df, status = load_data()
@@ -520,7 +522,7 @@ if mode == "DASHBOARD":
                 <div class="c-value" style="color:{r['Color']}">{r['Value']}</div>
             </div>""", unsafe_allow_html=True)
 
-# MODE 2: TRENDS (THE NEW CINEMATIC ENGINE)
+# MODE 2: TRENDS
 elif mode == "TREND ANALYSIS":
     st.markdown('<div class="section-header">Longitudinal Analysis</div>', unsafe_allow_html=True)
     if results_df.empty: st.warning("No Data."); st.stop()
