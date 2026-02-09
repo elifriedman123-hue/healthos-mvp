@@ -3,4 +3,6 @@ pandas
 gspread
 oauth2client
 altair
+
 google-generativeai
+streamlit-echarts
