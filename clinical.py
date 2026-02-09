@@ -12,7 +12,7 @@ from difflib import SequenceMatcher
 st.set_page_config(
     page_title="HealthOS Pro", 
     layout="wide", 
-    initial_sidebar_state="collapsed" # Collapsed for full immersion
+    initial_sidebar_state="collapsed" 
 )
 
 # --- 2. NEXT-GEN UI STYLING (HUD DESIGN) ---
@@ -22,11 +22,28 @@ st.markdown("""
 
     /* BASE THEME */
     [data-testid="stAppViewContainer"] { background-color: #09090B; color: #E4E4E7; font-family: 'Inter', sans-serif; }
-    [data-testid="stSidebar"] { background-color: #121214; border-right: 1px solid #27272A; }
-    
-    /* REMOVE CLUTTER */
     [data-testid="stHeader"] { display: none; }
-    .block-container { padding-top: 2rem; padding-bottom: 5rem; }
+    .block-container { padding-top: 1rem; padding-bottom: 5rem; }
+
+    /* NAVIGATION BAR (The Slick Fix) */
+    div[role="radiogroup"] {
+        background-color: #18181B;
+        padding: 6px;
+        border-radius: 12px;
+        border: 1px solid #27272A;
+        margin-bottom: 25px;
+    }
+    div[role="radiogroup"] label {
+        flex: 1;
+        text-align: center;
+        background-color: transparent;
+        border: none;
+        transition: background 0.2s;
+        border-radius: 8px;
+    }
+    div[role="radiogroup"] label:hover {
+        background-color: #27272A;
+    }
 
     /* HUD METRIC CARD */
     .hud-card {
@@ -72,6 +89,7 @@ st.markdown("""
         margin-bottom: 15px;
         border-bottom: 1px solid #27272A;
         padding-bottom: 5px;
+        margin-top: 20px;
     }
 
     /* GRID LAYOUT */
@@ -81,9 +99,22 @@ st.markdown("""
         gap: 12px;
         margin-bottom: 30px;
     }
+    
+    /* BUTTONS */
+    div.stButton > button {
+        width: 100%;
+        background-color: #27272A;
+        color: white;
+        border: 1px solid #3F3F46;
+        border-radius: 8px;
+    }
+    div.stButton > button:hover {
+        background-color: #3F3F46;
+        border-color: #52525B;
+    }
 
     /* UTILITIES */
-    .tag { padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; text-transform: uppercase; }
+    .tag { padding: 4px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; text-transform: uppercase; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -280,12 +311,12 @@ def plot_clinical_trend(marker_name, results_df, events_df, master_df):
 
     # 2. Reference Band (Safety Corridor)
     bands = alt.Chart(pd.DataFrame({'y': [min_val], 'y2': [max_val]})).mark_rect(
-        color='#10B981', opacity=0.08  # Medical Green
+        color='#10B981', opacity=0.08
     ).encode(y='y', y2='y2') if max_val > 0 else None
 
     # 3. Gradient Area (The "Glow")
     area = base.mark_area(
-        line={'color': '#3B82F6'}, # Electric Blue
+        line={'color': '#3B82F6'},
         color=alt.Gradient(
             gradient='linear',
             stops=[alt.GradientStop(color='#3B82F6', offset=0), alt.GradientStop(color='rgba(59, 130, 246, 0)', offset=1)],
@@ -329,28 +360,25 @@ def plot_clinical_trend(marker_name, results_df, events_df, master_df):
 # --- 6. MAIN APP ---
 master_df, results_df, events_df, status = load_data()
 
-# SIDEBAR NAV (Clean)
-st.sidebar.markdown("### ⚕️ Clinical OS")
-mode = st.sidebar.radio("Module", ["Patient Dashboard", "Longitudinal Trends", "Protocol Manager", "Data Ingestion"], label_visibility="collapsed")
-
-# --- HEADER (Patient Context) ---
-# Hardcoded for demo, you can make this dynamic later
+# HEADER
 st.markdown("""
-<div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #333; padding-bottom:10px; margin-bottom:20px;">
+<div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #333; padding-bottom:10px; margin-bottom:10px;">
     <div>
-        <h2 style="margin:0; font-family:'Inter'; letter-spacing:-1px;">Patient: J. Doe</h2>
-        <span style="font-size:12px; color:#71717A; text-transform:uppercase; letter-spacing:1px;">DOB: 12/05/1985 | ID: #88219</span>
+        <h2 style="margin:0; font-family:'Inter'; letter-spacing:-1px;">HealthOS <span style="color:#71717A; font-weight:400;">Clinical</span></h2>
     </div>
     <div style="text-align:right;">
-        <span class="tag" style="background:#262626; color:#A1A1AA; border:1px solid #3F3F46;">TRT Protocol: Active</span>
-        <span class="tag" style="background:#064E3B; color:#34D399; border:1px solid #059669; margin-left:8px;">Status: Optimized</span>
+         <span class="tag" style="background:#064E3B; color:#34D399; border:1px solid #059669;">Patient: Demo Mode</span>
     </div>
 </div>
 """, unsafe_allow_html=True)
 
+# TOP NAVIGATION (THE FIX)
+mode = st.radio("Navigation", ["Dashboard", "Trend Analysis", "Protocol Log", "Data Tools"], horizontal=True, label_visibility="collapsed")
+
 # MODE 1: DASHBOARD
-if mode == "Patient Dashboard":
-    if results_df.empty: st.warning("No Data."); st.stop()
+if mode == "Dashboard":
+    if results_df.empty: 
+        st.info("No Data Loaded. Go to 'Data Tools' to upload."); st.stop()
     
     unique_dates = sorted(results_df['Date'].dropna().unique(), reverse=True)
     date_options = [d.strftime('%Y-%m-%d') for d in unique_dates if pd.notna(d)]
@@ -380,21 +408,15 @@ if mode == "Patient Dashboard":
 
     # HUD GRID
     st.markdown("""<div class="hud-grid">""", unsafe_allow_html=True)
-    # Total Tested
     st.markdown(f"""<div class="hud-card"><div class="hud-val" style="color:#FAFAFA">{len(df_display)}</div><div class="hud-label">Total Tested</div></div>""", unsafe_allow_html=True)
-    # Optimal
     st.markdown(f"""<div class="hud-card"><div class="hud-val" style="color:#3B82F6">{stats['Blue']}</div><div class="hud-label">Optimal</div></div>""", unsafe_allow_html=True)
-    # Normal
     st.markdown(f"""<div class="hud-card"><div class="hud-val" style="color:#10B981">{stats['Green']}</div><div class="hud-label">Normal</div></div>""", unsafe_allow_html=True)
-    # Border
     st.markdown(f"""<div class="hud-card"><div class="hud-val" style="color:#F59E0B">{stats['Orange']}</div><div class="hud-label">Borderline</div></div>""", unsafe_allow_html=True)
-    # Abnormal
     st.markdown(f"""<div class="hud-card"><div class="hud-val" style="color:#EF4444">{stats['Red']}</div><div class="hud-label">Abnormal</div></div>""", unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
     
     # LISTS
     c_warn, c_good = st.columns(2)
-    
     with c_warn:
         st.markdown('<div class="section-header">Attention Required</div>', unsafe_allow_html=True)
         bad_df = df_display[df_display['Priority'].isin([1, 2])].sort_values('Priority', ascending=True)
@@ -423,8 +445,8 @@ if mode == "Patient Dashboard":
             </div>""", unsafe_allow_html=True)
 
 # MODE 2: TRENDS
-elif mode == "Longitudinal Trends":
-    st.markdown('<div class="section-header">Trend Analysis</div>', unsafe_allow_html=True)
+elif mode == "Trend Analysis":
+    st.markdown('<div class="section-header">Longitudinal Analysis</div>', unsafe_allow_html=True)
     if results_df.empty: st.warning("No Data."); st.stop()
     
     markers = sorted(results_df['Marker'].unique())
@@ -438,12 +460,12 @@ elif mode == "Longitudinal Trends":
         st.markdown("<br>", unsafe_allow_html=True)
 
 # MODE 3: PROTOCOL
-elif mode == "Protocol Manager":
+elif mode == "Protocol Log":
     st.markdown('<div class="section-header">Intervention Log</div>', unsafe_allow_html=True)
     with st.form("event_form"):
         c1, c2, c3 = st.columns([1, 2, 1])
         with c1: e_date = st.date_input("Date")
-        with c2: e_name = st.text_input("Intervention (e.g., '100mg Test C')")
+        with c2: e_name = st.text_input("Intervention")
         with c3: e_type = st.selectbox("Type", ["Medication", "Lifestyle", "Procedure"])
         e_note = st.text_area("Clinical Notes")
         if st.form_submit_button("Log Event"):
@@ -454,7 +476,7 @@ elif mode == "Protocol Manager":
         st.dataframe(events_df, use_container_width=True, height=300)
 
 # MODE 4: INGESTION
-elif mode == "Data Ingestion":
+elif mode == "Data Tools":
     st.markdown('<div class="section-header">Data Pipeline</div>', unsafe_allow_html=True)
     up_file = st.file_uploader("Upload CSV", type=['csv'])
     if up_file and st.button("Process Batch"):
