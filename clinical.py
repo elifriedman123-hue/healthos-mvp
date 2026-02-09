@@ -5,12 +5,46 @@ from oauth2client.service_account import ServiceAccountCredentials
 import json
 import altair as alt
 import os
-from datetime import datetime
+import re
+from difflib import SequenceMatcher
 
-# --- 1. CONFIGURATION (CLINICAL DASHBOARD) ---
+# --- 1. CONFIGURATION ---
 st.set_page_config(page_title="HealthOS Clinical", layout="wide", initial_sidebar_state="expanded")
 
-# --- AUTHENTICATION ---
+# --- 2. STYLING (The "HealthOS" Look) ---
+st.markdown("""
+    <style>
+    /* Global Reset */
+    [data-testid="stAppViewContainer"] { background-color: #000000; color: #F5F5F7; }
+    [data-testid="stSidebar"] { background-color: #1C1C1E; border-right: 1px solid #2C2C2E; }
+    
+    /* Card Design */
+    .glass-card { 
+        background: rgba(28, 28, 30, 0.6); 
+        backdrop-filter: blur(20px); 
+        border: 1px solid rgba(255,255,255,0.1); 
+        border-radius: 20px; 
+        padding: 20px; 
+        margin-bottom: 10px; 
+        box-shadow: 0 4px 24px rgba(0,0,0,0.2); 
+    }
+    .marker-title { margin: 0; font-size: 16px; font-weight: 600; color: white; }
+    .marker-value { margin: 0; font-size: 24px; font-weight: 700; }
+    .marker-sub { margin-top: 4px; font-size: 11px; color: #8E8E93; text-transform: uppercase; letter-spacing: 0.5px; }
+    
+    /* Stat Grid */
+    .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 10px; margin-bottom: 20px; }
+    .stat-box { text-align: center; padding: 15px 5px; border-radius: 16px; background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255,255,255,0.05); }
+    .stat-num { font-size: 24px; font-weight: 700; margin: 0; color: white; }
+    .stat-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 4px; opacity: 0.7; color: white; }
+    </style>
+""", unsafe_allow_html=True)
+
+# --- 3. DATA ENGINE ---
+SHEET_NAME = "HealthOS_DB"
+MASTER_FILE_LOCAL = "Biomarker_Master_Elite.csv"
+
+# Auth
 def get_google_sheet_client():
     scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
     current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -32,17 +66,26 @@ def get_google_sheet_client():
         except: return None
     else: return None
 
-# --- 2. DATA ENGINE ---
-SHEET_NAME = "HealthOS_DB"
-
 @st.cache_data(ttl=5)
 def load_data():
     client = get_google_sheet_client()
-    if not client: return None, None, "Auth Failed"
+    if not client: return None, None, None, "Auth Failed"
     try:
         sh = client.open(SHEET_NAME)
         
-        # 1. LAB RESULTS
+        # Master Data (For Ranges)
+        try:
+            ws_master = sh.worksheet("Master")
+            m_data = ws_master.get_all_values()
+            if len(m_data) > 1: master = pd.DataFrame(m_data[1:], columns=m_data[0])
+            else: master = pd.DataFrame()
+        except:
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            master_path = os.path.join(current_dir, MASTER_FILE_LOCAL)
+            if os.path.exists(master_path): master = pd.read_csv(master_path)
+            else: master = pd.DataFrame()
+
+        # Lab Results
         try:
             ws_res = sh.worksheet("Results")
             data = ws_res.get_all_values()
@@ -51,27 +94,25 @@ def load_data():
             results['NumericValue'] = pd.to_numeric(results['Value'], errors='coerce')
         except: results = pd.DataFrame()
 
-        # 2. CLINICAL EVENTS (INTERVENTIONS)
+        # Clinical Events
         try:
             ws_ev = sh.worksheet("Events")
             ev_data = ws_ev.get_all_values()
             events = pd.DataFrame(ev_data[1:], columns=ev_data[0])
             events['Date'] = pd.to_datetime(events['Date'], errors='coerce')
         except: 
-            # Auto-create if missing
             ws_ev = sh.add_worksheet("Events", 1000, 5)
             ws_ev.append_row(["Date", "Event", "Type", "Notes"])
             events = pd.DataFrame(columns=["Date", "Event", "Type", "Notes"])
 
-        return results, events, "OK"
-    except Exception as e: return None, None, str(e)
+        return master, results, events, "OK"
+    except Exception as e: return None, None, None, str(e)
 
 def add_clinical_event(date, event_name, event_type, notes):
     client = get_google_sheet_client()
     sh = client.open(SHEET_NAME)
     try: ws = sh.worksheet("Events")
     except: ws = sh.add_worksheet("Events", 1000, 5)
-    
     ws.append_row([str(date), event_name, event_type, notes])
     st.cache_data.clear()
 
@@ -84,142 +125,211 @@ def clear_data():
     except: pass
     st.cache_data.clear()
 
-# --- 3. UPLOAD ENGINE (SMART ALIGNMENT) ---
+# --- 4. UPLOAD ENGINE (SMART ALIGNMENT) ---
 def process_csv_upload(uploaded_file):
     try:
-        # 1. Try reading with standard UTF-8 first
-        try:
-            df = pd.read_csv(uploaded_file)
+        try: df = pd.read_csv(uploaded_file)
         except UnicodeDecodeError:
             uploaded_file.seek(0)
             df = pd.read_csv(uploaded_file, encoding='ISO-8859-1')
             
-        # 2. COLUMN ALIGNMENT (The Fix)
-        # The database expects EXACTLY this order:
         db_columns = ['Marker', 'Value', 'Unit', 'Flag', 'Date', 'Source']
-        
-        # Ensure all columns exist (fill missing with empty)
         for col in db_columns:
-            if col not in df.columns:
-                df[col] = ""
-                
-        # FORCE the dataframe to match the database order
+            if col not in df.columns: df[col] = ""
         df_final = df[db_columns]
         
-        # 3. Upload
         client = get_google_sheet_client()
         sh = client.open(SHEET_NAME)
-        
         try: ws = sh.worksheet("Results")
         except: ws = sh.add_worksheet("Results", 1000, 10); ws.append_row(db_columns)
 
-        # Convert to list and upload
-        data_to_upload = df_final.astype(str).values.tolist()
-        ws.append_rows(data_to_upload)
+        ws.append_rows(df_final.astype(str).values.tolist())
         st.cache_data.clear()
         return "Success"
     except Exception as e: return f"Error: {str(e)}"
 
-# --- 4. VISUALIZATION ENGINE (FIXED) ---
+# --- 5. LOGIC & VISUALIZATION ---
+def smart_clean(marker):
+    return re.sub(r'^[SPBU]-\s*', '', str(marker).upper().replace("SERUM", "").replace("PLASMA", "").replace("BLOOD", "").replace("TOTAL", "").strip())
+
+def fuzzy_match(marker, master):
+    lab_clean = smart_clean(marker)
+    best_row, best_score = None, 0.0
+    if master.empty: return None
+    for _, row in master.iterrows():
+        keywords = [smart_clean(k) for k in str(row['Fuzzy Match Keywords']).split(",")]
+        for key in keywords:
+            if key == lab_clean: return row
+            score = SequenceMatcher(None, lab_clean, key).ratio()
+            if score > best_score: best_score, best_row = score, row
+    return best_row if best_score > 0.60 else None
+
+def parse_range(range_str):
+    if pd.isna(range_str): return 0,0
+    clean = str(range_str).replace('–', '-').replace(',', '.')
+    clean = re.sub(r'(?<=\d)\s(?=\d)', '', clean)
+    parts = re.findall(r"[-+]?\d*\.\d+|\d+", clean)
+    if len(parts) >= 2: return float(parts[0]), float(parts[1])
+    return 0, 0
+
+def get_detailed_status(val, master_row, marker_name):
+    try:
+        s_min, s_max = parse_range(master_row['Standard Range'])
+        try: o_min = float(str(master_row['Optimal Min']).replace(',', '.'))
+        except: o_min = 0.0
+        try: o_max = float(str(master_row['Optimal Max']).replace(',', '.'))
+        except: o_max = 0.0
+
+        clean_name = smart_clean(marker_name)
+        if "VITAMIN D" in clean_name and o_min == 0: o_min = 50.0
+        
+        unit = str(master_row['Unit']) if pd.notna(master_row['Unit']) else ""
+        rng_str = f"{s_min} - {s_max} {unit}"
+
+        if s_min > 0 and val < s_min: return "OUT OF RANGE", "#FF3B30", "c-red", rng_str, 1
+        if s_max > 0 and val > s_max: return "OUT OF RANGE", "#FF3B30", "c-red", rng_str, 1
+        
+        has_optimal = (o_min > 0 or o_max > 0)
+        check_min = o_min if o_min > 0 else s_min
+        check_max = o_max if o_max > 0 else s_max
+        
+        if has_optimal and val >= check_min and val <= check_max: return "OPTIMAL", "#007AFF", "c-blue", rng_str, 3
+        return "IN RANGE", "#34C759", "c-green", rng_str, 4
+    except: return "ERROR", "#8E8E93", "c-grey", "Error", 5
+
 def plot_clinical_trend(marker_name, results_df, events_df):
-    # Filter data
     chart_data = results_df[results_df['Marker'] == marker_name].copy()
     if chart_data.empty: return None
     
-    # Base Chart Definition
     base = alt.Chart(chart_data).encode(
         x=alt.X('Date:T', title='Timeline'),
         y=alt.Y('NumericValue:Q', title=marker_name),
         tooltip=['Date', 'Value', 'Source']
     )
     
-    # 1. The Line (FIXED SYNTAX HERE)
-    line = base.mark_line(
-        color='#007AFF', 
-        strokeWidth=3,
-        point=alt.OverlayMarkDef(color='#007AFF', size=60) # Moved inside mark_line
+    line = base.mark_line(color='#007AFF', strokeWidth=3).encode(
+        point=alt.OverlayMarkDef(color='#007AFF', size=60)
     )
 
-    # 2. Event Lines (Vertical Rules)
     if not events_df.empty:
         rules = alt.Chart(events_df).mark_rule(color='red', strokeWidth=2, strokeDash=[5,5]).encode(
-            x='Date:T',
-            tooltip=['Event', 'Notes']
+            x='Date:T', tooltip=['Event', 'Notes']
         )
-        
-        # Labels for Events
         text = alt.Chart(events_df).mark_text(
             align='left', baseline='middle', dx=5, color='white', angle=270
         ).encode(
-            x='Date:T',
-            text='Event',
-            y=alt.value(20) # Position at top
+            x='Date:T', text='Event', y=alt.value(20)
         )
-        
         return (line + rules + text).properties(height=300).interactive()
     
     return line.properties(height=300).interactive()
 
-# --- 5. MAIN APP ---
-results_df, events_df, status = load_data()
+# --- 6. MAIN APP ---
+master_df, results_df, events_df, status = load_data()
 
 st.sidebar.header("👨‍⚕️ Clinical OS")
-mode = st.sidebar.radio("Mode", ["Patient View", "Protocol Manager", "Data Ingestion"])
+mode = st.sidebar.radio("Navigation", ["Patient Overview", "Trends (TRT View)", "Protocol Manager", "Data Ingestion"])
 
-if mode == "Data Ingestion":
-    st.title("📂 Data Ingestion")
-    st.markdown("Upload lab PDFs or bulk CSVs here.")
+# MODE 1: THE "PRETTY" DASHBOARD (NO AI)
+if mode == "Patient Overview":
+    if results_df.empty: st.warning("No Data."); st.stop()
     
-    up_file = st.file_uploader("Upload CSV (Demo Data)", type=['csv'])
-    if up_file:
-        if st.button("Process Batch"):
-            msg = process_csv_upload(up_file)
-            if msg == "Success": st.success("Data Ingested"); st.rerun()
-            else: st.error(msg)
+    unique_dates = sorted(results_df['Date'].dropna().unique(), reverse=True)
+    date_options = [d.strftime('%Y-%m-%d') for d in unique_dates if pd.notna(d)]
+    selected_label = st.selectbox("Select Lab Report:", date_options)
+    
+    snapshot = results_df[results_df['Date'].astype(str).str.startswith(selected_label)].copy()
+    processed_rows, stats = [], {"Blue": 0, "Green": 0, "Orange": 0, "Red": 0}
+    
+    for _, row in snapshot.iterrows():
+        master = fuzzy_match(row['Marker'], master_df)
+        if master is not None:
+            val = row['NumericValue'] if pd.notna(row.get('NumericValue')) else row['Value']
+            status, color, css, rng, prio = get_detailed_status(val, master, master['Biomarker'])
             
-    if st.button("⚠️ CLEAR ALL DATA (Reset Demo)"):
-        clear_data()
-        st.warning("Database Wiped.")
-        st.rerun()
-
-elif mode == "Protocol Manager":
-    st.title("⚡ Protocol & Intervention Timeline")
+            if "OPTIMAL" in status: stats["Blue"] += 1
+            elif "IN RANGE" in status: stats["Green"] += 1
+            elif "OUT OF RANGE" in status: stats["Red"] += 1
+            
+            processed_rows.append({"Marker": master['Biomarker'], "Value": row['Value'], "Status": status, "Color": color, "Range": rng, "Priority": prio})
     
-    # Input Form
-    with st.form("event_form"):
-        c1, c2, c3 = st.columns([1, 2, 1])
-        with c1: e_date = st.date_input("Date")
-        with c2: e_name = st.text_input("Intervention (e.g., 'Started 100mg TRT')")
-        with c3: e_type = st.selectbox("Type", ["Medication", "Lifestyle", "Procedure", "Note"])
-        e_note = st.text_area("Clinical Notes")
-        
-        if st.form_submit_button("Add to Timeline"):
-            add_clinical_event(e_date, e_name, e_type, e_note)
-            st.success("Event Logged")
-            st.rerun()
+    df_display = pd.DataFrame(processed_rows)
+    if df_display.empty: st.warning("No matched biomarkers."); st.stop()
 
+    # Metrics Grid
+    st.markdown("""<div class="stat-grid">""", unsafe_allow_html=True)
+    metrics = [("Optimal", stats['Blue'], "#007AFF"), ("Normal", stats['Green'], "#34C759"), ("Abnormal", stats['Red'], "#FF3B30")]
+    grid_html = ""
+    for l, v, c in metrics:
+        grid_html += f"""<div class="stat-box"><div class="stat-num" style="color:{c};">{v}</div><div class="stat-label" style="color:{c};">{l}</div></div>"""
+    st.markdown(grid_html + "</div>", unsafe_allow_html=True)
+    
     st.divider()
-    st.subheader("History")
-    if not events_df.empty:
-        st.dataframe(events_df, use_container_width=True)
-    else:
-        st.info("No interventions recorded yet.")
-
-elif mode == "Patient View":
-    if results_df.empty: st.warning("No Patient Data. Go to 'Data Ingestion' to upload CSV."); st.stop()
     
+    # The Cards
+    c_warn, c_good = st.columns(2)
+    with c_warn:
+        st.subheader("⚠️ Attention")
+        bad_df = df_display[df_display['Priority'] == 1]
+        if bad_df.empty: st.markdown("✅ No Issues")
+        for _, r in bad_df.iterrows():
+            st.markdown(f"""
+            <div class="glass-card" style="border-left:4px solid {r['Color']}">
+                <div class="marker-title">{r['Marker']}</div>
+                <div class="marker-sub" style="color:{r['Color']}">{r['Status']} (Range: {r['Range']})</div>
+                <div class="marker-value" style="color:{r['Color']}; text-align:right">{r['Value']}</div>
+            </div>""", unsafe_allow_html=True)
+
+    with c_good:
+        st.subheader("✅ Optimized")
+        good_df = df_display[df_display['Priority'].isin([3, 4])]
+        for _, r in good_df.iterrows():
+            st.markdown(f"""
+            <div class="glass-card" style="border-left:4px solid {r['Color']}">
+                <div class="marker-title">{r['Marker']}</div>
+                <div class="marker-sub" style="color:{r['Color']}">{r['Status']}</div>
+                <div class="marker-value" style="color:{r['Color']}; text-align:right">{r['Value']}</div>
+            </div>""", unsafe_allow_html=True)
+
+# MODE 2: THE "TRT" TRENDS
+elif mode == "Trends (TRT View)":
+    if results_df.empty: st.warning("No Data."); st.stop()
     st.title("📈 Longitudinal Analysis")
     
-    # Filter for the "Big 3" TRT Markers (plus others)
     markers = sorted(results_df['Marker'].unique())
-    # Default selection if available
     defaults = [m for m in ["Total Testosterone", "Haematocrit", "Oestradiol"] if m in markers]
-    
-    selected_markers = st.multiselect("Select Biomarkers to Track:", markers, default=defaults)
+    selected_markers = st.multiselect("Select Biomarkers:", markers, default=defaults)
     
     for m in selected_markers:
         st.markdown(f"### {m}")
         chart = plot_clinical_trend(m, results_df, events_df)
-        if chart:
-            st.altair_chart(chart, use_container_width=True)
+        if chart: st.altair_chart(chart, use_container_width=True)
         st.divider()
+
+# MODE 3: PROTOCOL MANAGER
+elif mode == "Protocol Manager":
+    st.title("⚡ Intervention Timeline")
+    with st.form("event_form"):
+        c1, c2, c3 = st.columns([1, 2, 1])
+        with c1: e_date = st.date_input("Date")
+        with c2: e_name = st.text_input("Intervention")
+        with c3: e_type = st.selectbox("Type", ["Medication", "Lifestyle", "Procedure"])
+        e_note = st.text_area("Clinical Notes")
+        if st.form_submit_button("Add to Timeline"):
+            add_clinical_event(e_date, e_name, e_type, e_note)
+            st.success("Event Logged"); st.rerun()
+
+    if not events_df.empty: st.dataframe(events_df, use_container_width=True)
+
+# MODE 4: DATA INGESTION
+elif mode == "Data Ingestion":
+    st.title("📂 Data Ingestion")
+    up_file = st.file_uploader("Upload Lab CSV", type=['csv'])
+    if up_file and st.button("Process Batch"):
+        msg = process_csv_upload(up_file)
+        if msg == "Success": st.success("Data Ingested"); st.rerun()
+        else: st.error(msg)
+            
+    if st.button("⚠️ CLEAR ALL DATA"):
+        clear_data()
+        st.warning("Database Wiped."); st.rerun()
