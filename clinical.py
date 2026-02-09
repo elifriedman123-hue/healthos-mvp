@@ -84,39 +84,41 @@ def clear_data():
     except: pass
     st.cache_data.clear()
 
-# --- 3. UPLOAD ENGINE (SMART ENCODING) ---
+# --- 3. UPLOAD ENGINE (SMART ALIGNMENT) ---
 def process_csv_upload(uploaded_file):
     try:
         # 1. Try reading with standard UTF-8 first
         try:
             df = pd.read_csv(uploaded_file)
         except UnicodeDecodeError:
-            # 2. If that fails (due to symbols like µ), try ISO-8859-1
-            uploaded_file.seek(0) # Reset file pointer
+            uploaded_file.seek(0)
             df = pd.read_csv(uploaded_file, encoding='ISO-8859-1')
             
-        # Basic validation
-        req = ['Date', 'Marker', 'Value']
-        if not all(col in df.columns for col in req): return "Invalid CSV Format: Missing Date, Marker, or Value columns"
+        # 2. COLUMN ALIGNMENT (The Fix)
+        # The database expects EXACTLY this order:
+        db_columns = ['Marker', 'Value', 'Unit', 'Flag', 'Date', 'Source']
         
+        # Ensure all columns exist (fill missing with empty)
+        for col in db_columns:
+            if col not in df.columns:
+                df[col] = ""
+                
+        # FORCE the dataframe to match the database order
+        df_final = df[db_columns]
+        
+        # 3. Upload
         client = get_google_sheet_client()
         sh = client.open(SHEET_NAME)
         
-        # Check if "Results" worksheet exists, create if not
-        try:
-            ws = sh.worksheet("Results")
-        except:
-            ws = sh.add_worksheet("Results", 1000, 10)
-            ws.append_row(REQUIRED_COLUMNS)
+        try: ws = sh.worksheet("Results")
+        except: ws = sh.add_worksheet("Results", 1000, 10); ws.append_row(db_columns)
 
-        # Append to sheet
-        # Convert df to list of lists and ensure all data is string converted to avoid serialization issues
-        data_to_upload = df.astype(str).values.tolist()
+        # Convert to list and upload
+        data_to_upload = df_final.astype(str).values.tolist()
         ws.append_rows(data_to_upload)
         st.cache_data.clear()
         return "Success"
     except Exception as e: return f"Error: {str(e)}"
-
 
 # --- 4. VISUALIZATION ENGINE (FIXED) ---
 def plot_clinical_trend(marker_name, results_df, events_df):
