@@ -15,27 +15,28 @@ st.set_page_config(
     initial_sidebar_state="collapsed" 
 )
 
-# --- 2. NEXT-GEN UI STYLING (TERMINAL MODE) ---
+# --- 2. NEXT-GEN UI STYLING ---
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap');
 
     /* GLOBAL RESET */
-    [data-testid="stAppViewContainer"] { background-color: #09090B; color: #E4E4E7; font-family: 'Inter', sans-serif; }
+    [data-testid="stAppViewContainer"] { background-color: #050505; color: #E4E4E7; font-family: 'Inter', sans-serif; }
     [data-testid="stHeader"] { display: none; }
     .block-container { padding-top: 1.5rem; padding-bottom: 5rem; }
 
-    /* --- NAVIGATION BAR (THE "COOL" FONT UPDATE) --- */
+    /* --- NAVIGATION BAR --- */
     [data-testid="stRadio"] > label { display: none; }
     div[role="radiogroup"] {
         flex-direction: row;
-        background-color: #18181B;
+        background-color: #0F0F11;
         padding: 4px;
-        border-radius: 10px;
-        border: 1px solid #27272A;
+        border-radius: 12px;
+        border: 1px solid #1E1E20;
         width: 100%;
         overflow-x: auto;
         white-space: nowrap;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.5);
     }
     div[role="radiogroup"] label {
         flex: 1;
@@ -43,46 +44,40 @@ st.markdown("""
         border: 1px solid transparent;
         border-radius: 8px;
         margin: 0 2px;
-        padding: 8px 16px;
+        padding: 10px 16px;
         text-align: center;
         transition: all 0.2s ease;
         justify-content: center;
     }
     div[role="radiogroup"] label > div:first-child { display: none; } 
     
-    /* APPLY JETBRAINS MONO TO NAV */
     div[role="radiogroup"] label > div[data-testid="stMarkdownContainer"] > p {
-        font-family: 'JetBrains Mono', monospace !important; /* THE COOL FONT */
+        font-family: 'JetBrains Mono', monospace !important; 
         font-weight: 700;
-        font-size: 12px;
+        font-size: 11px;
         margin: 0;
-        color: #71717A; 
+        color: #52525B; 
         text-transform: uppercase !important; 
-        letter-spacing: 1px; /* THE WIDE SPACING */
+        letter-spacing: 1.5px; 
         white-space: nowrap;
     }
     
-    div[role="radiogroup"] label:hover {
-        background-color: #27272A;
-        cursor: pointer;
-    }
+    div[role="radiogroup"] label:hover { background-color: #18181B; cursor: pointer; }
     
     div[role="radiogroup"] label[data-checked="true"] {
-        background-color: #27272A;
-        border: 1px solid #3F3F46;
+        background-color: #18181B;
+        border: 1px solid #27272A;
+        box-shadow: 0 0 15px rgba(255, 255, 255, 0.03);
     }
-    div[role="radiogroup"] label[data-checked="true"] > div[data-testid="stMarkdownContainer"] > p {
-        color: #FAFAFA;
-    }
+    div[role="radiogroup"] label[data-checked="true"] > div[data-testid="stMarkdownContainer"] > p { color: #FAFAFA; }
 
-    /* --- DROPDOWN (MATCHING THE FONT) --- */
+    /* --- DROPDOWN --- */
     div[data-baseweb="select"] > div {
-        background-color: #18181B !important;
-        border-color: #27272A !important;
+        background-color: #0F0F11 !important;
+        border-color: #1E1E20 !important;
         color: #FAFAFA !important;
         border-radius: 8px !important;
     }
-    /* Force the selected value to be JETBRAINS MONO + UPPERCASE */
     div[data-baseweb="select"] span {
         font-family: 'JetBrains Mono', monospace !important; 
         color: #FAFAFA !important;
@@ -90,56 +85,57 @@ st.markdown("""
         letter-spacing: 1px !important;
         font-size: 13px !important;
     }
-    /* Hide the default label for clean look */
     .stSelectbox label { display: none; }
 
-    /* --- HUD METRIC CARD --- */
+    /* --- HUD CARD (GLASS) --- */
     .hud-card {
-        background: linear-gradient(145deg, rgba(39, 39, 42, 0.4) 0%, rgba(24, 24, 27, 0.4) 100%);
-        backdrop-filter: blur(20px);
-        border: 1px solid rgba(255, 255, 255, 0.08);
+        background: linear-gradient(180deg, rgba(24, 24, 27, 0.6) 0%, rgba(9, 9, 11, 0.6) 100%);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.05);
         border-radius: 16px;
         padding: 20px;
         display: flex;
         flex-direction: column;
         align-items: center;
-        transition: transform 0.2s;
+        box-shadow: 0 4px 30px rgba(0, 0, 0, 0.3);
     }
-    .hud-val { font-family: 'JetBrains Mono', monospace; font-size: 32px; font-weight: 700; color: #FAFAFA; letter-spacing: -1px; }
-    .hud-label { font-family: 'JetBrains Mono', monospace; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #A1A1AA; margin-top: 6px; font-weight: 700; }
+    .hud-val { font-family: 'JetBrains Mono', monospace; font-size: 32px; font-weight: 700; color: #FAFAFA; letter-spacing: -1.5px; text-shadow: 0 0 20px rgba(255,255,255,0.1); }
+    .hud-label { font-family: 'JetBrains Mono', monospace; font-size: 10px; text-transform: uppercase; letter-spacing: 1.5px; color: #52525B; margin-top: 8px; font-weight: 700; }
 
     /* --- CLINICAL ROW --- */
     .clinical-row {
-        background: rgba(255, 255, 255, 0.03);
-        border-left: 4px solid #333;
+        background: rgba(15, 15, 17, 0.6);
+        border-left: 2px solid #333;
         padding: 16px 20px;
         margin-bottom: 8px;
-        border-radius: 4px 12px 12px 4px;
+        border-radius: 0px 8px 8px 0px;
         display: flex;
         justify-content: space-between;
         align-items: center;
+        border: 1px solid rgba(255,255,255,0.02);
     }
-    .c-marker { font-family: 'Inter', sans-serif; font-weight: 600; font-size: 15px; color: #F4F4F5; }
-    .c-sub { font-size: 11px; color: #71717A; margin-top: 2px; }
-    .c-value { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 18px; }
+    .c-marker { font-family: 'Inter', sans-serif; font-weight: 500; font-size: 14px; color: #D4D4D8; letter-spacing: 0.2px; }
+    .c-sub { font-size: 11px; color: #52525B; margin-top: 4px; font-family: 'JetBrains Mono', monospace; }
+    .c-value { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 16px; }
     
     /* HEADERS */
     .section-header {
-        font-family: 'JetBrains Mono', monospace; /* UPDATED HEADER FONT */
-        font-size: 11px;
+        font-family: 'JetBrains Mono', monospace; 
+        font-size: 10px;
         font-weight: 700;
         text-transform: uppercase;
-        letter-spacing: 1px;
-        color: #52525B;
-        margin-bottom: 15px;
-        border-bottom: 1px solid #27272A;
-        padding-bottom: 5px;
-        margin-top: 10px;
+        letter-spacing: 2px;
+        color: #3F3F46;
+        margin-bottom: 20px;
+        border-bottom: 1px solid #18181B;
+        padding-bottom: 8px;
+        margin-top: 20px;
     }
 
     /* UTILS */
     .tag { padding: 4px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; text-transform: uppercase; font-family: 'JetBrains Mono', monospace; }
-    div.stButton > button { width: 100%; border-radius: 8px; font-family: 'Inter', sans-serif; font-weight: 600; }
+    div.stButton > button { width: 100%; border-radius: 8px; font-family: 'Inter', sans-serif; font-weight: 600; background: #18181B; border: 1px solid #27272A; color: #A1A1AA; }
+    div.stButton > button:hover { border-color: #52525B; color: white; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -285,34 +281,34 @@ def get_detailed_status(val, master_row, marker_name):
         rng_str = f"{s_min} - {s_max} {unit}"
 
         # 1. Red (Out of Range)
-        if s_min > 0 and val < s_min: return "OUT OF RANGE", "#FF3B30", "c-red", rng_str, 1
-        if s_max > 0 and val > s_max: return "OUT OF RANGE", "#FF3B30", "c-red", rng_str, 1
+        if s_min > 0 and val < s_min: return "OUT OF RANGE", "#F87171", "c-red", rng_str, 1
+        if s_max > 0 and val > s_max: return "OUT OF RANGE", "#F87171", "c-red", rng_str, 1
         
         # 2. Orange (Borderline)
         higher_is_better = ["VITAMIND", "VITAMIN D", "DHEA", "TESTOSTERONE", "MAGNESIUM", "B12", "FOLATE", "HDL", "FERRITIN"]
         if any(x in clean_name for x in higher_is_better):
-            if o_min > 0 and val < o_min: return "BORDERLINE", "#FF9500", "c-orange", rng_str, 2
+            if o_min > 0 and val < o_min: return "BORDERLINE", "#FBBF24", "c-orange", rng_str, 2
         
         if "HDL" in clean_name and "NON" not in clean_name and val < 1.4:
-            return "BORDERLINE", "#FF9500", "c-orange", rng_str, 2
+            return "BORDERLINE", "#FBBF24", "c-orange", rng_str, 2
             
         range_span = s_max - s_min
         buffer = range_span * 0.025 if range_span > 0 else 0
         if buffer > 0:
-            if val < (s_min + buffer): return "BORDERLINE", "#FF9500", "c-orange", rng_str, 2
-            if val > (s_max - buffer): return "BORDERLINE", "#FF9500", "c-orange", rng_str, 2
+            if val < (s_min + buffer): return "BORDERLINE", "#FBBF24", "c-orange", rng_str, 2
+            if val > (s_max - buffer): return "BORDERLINE", "#FBBF24", "c-orange", rng_str, 2
 
         # 3. Blue (Optimal)
         has_optimal = (o_min > 0 or o_max > 0)
         check_min = o_min if o_min > 0 else s_min
         check_max = o_max if o_max > 0 else s_max
-        if has_optimal and val >= check_min and val <= check_max: return "OPTIMAL", "#007AFF", "c-blue", rng_str, 3
+        if has_optimal and val >= check_min and val <= check_max: return "OPTIMAL", "#22D3EE", "c-blue", rng_str, 3
         
         # 4. Green (Normal)
-        return "IN RANGE", "#34C759", "c-green", rng_str, 4
-    except: return "ERROR", "#8E8E93", "c-grey", "Error", 5
+        return "IN RANGE", "#34D399", "c-green", rng_str, 4
+    except: return "ERROR", "#71717A", "c-grey", "Error", 5
 
-# --- VISUALIZATION ENGINE ---
+# --- VISUALIZATION ENGINE (CINEMATIC UPGRADE) ---
 def plot_clinical_trend(marker_name, results_df, events_df, master_df):
     chart_data = results_df[results_df['Marker'] == marker_name].copy()
     if chart_data.empty: return None
@@ -323,10 +319,26 @@ def plot_clinical_trend(marker_name, results_df, events_df, master_df):
     if master_row is not None:
         min_val, max_val = parse_range(master_row['Standard Range'])
 
+    # Determine "Optimal" Zone color
+    color_scheme = "#22D3EE" # Cyan/Electric Blue default
+
     # 1. Base Layer
     base = alt.Chart(chart_data).encode(
-        x=alt.X('Date:T', title=None, axis=alt.Axis(format='%d %b %Y', labelColor='#71717A', tickColor='#27272A', domain=False, gridColor='#27272A')),
-        y=alt.Y('NumericValue:Q', title=None, scale=alt.Scale(zero=False, padding=20), axis=alt.Axis(labelColor='#71717A', tickColor='#27272A', domain=False, gridColor='#27272A')),
+        x=alt.X('Date:T', title=None, axis=alt.Axis(
+            format='%b %y', 
+            labelColor='#52525B', 
+            tickColor='#27272A', 
+            domain=False, 
+            gridColor='#18181B',
+            labelFont='JetBrains Mono'
+        )),
+        y=alt.Y('NumericValue:Q', title=None, scale=alt.Scale(zero=False, padding=25), axis=alt.Axis(
+            labelColor='#52525B', 
+            tickColor='#27272A', 
+            domain=False, 
+            gridColor='#18181B',
+            labelFont='JetBrains Mono'
+        )),
         tooltip=[
             alt.Tooltip('Date:T', format='%d %b %Y'),
             alt.Tooltip('NumericValue:Q', title=marker_name),
@@ -334,71 +346,89 @@ def plot_clinical_trend(marker_name, results_df, events_df, master_df):
         ]
     )
 
-    # 2. Reference Band
+    # 2. Reference Band (Subtle Organic Flow)
     bands = alt.Chart(pd.DataFrame({'y': [min_val], 'y2': [max_val]})).mark_rect(
-        color='#10B981', opacity=0.08
+        color='white', opacity=0.03, cornerRadius=0
     ).encode(y='y', y2='y2') if max_val > 0 else None
 
-    # 3. Gradient Area
-    area = base.mark_area(
-        line={'color': '#3B82F6'},
-        color=alt.Gradient(
-            gradient='linear',
-            stops=[alt.GradientStop(color='#3B82F6', offset=0), alt.GradientStop(color='rgba(59, 130, 246, 0)', offset=1)],
-            x1=1, x2=1, y1=1, y2=0
-        ),
-        opacity=0.4
+    # 3. GLOW EFFECT (Thick blurred line behind)
+    glow = base.mark_line(
+        color=color_scheme, strokeWidth=8, opacity=0.15, interpolate='monotone'
     )
 
-    # 4. The Line
-    line = base.mark_line(color='#3B82F6', strokeWidth=3)
+    # 4. MAIN LINE (Sharp)
+    line = base.mark_line(
+        stroke=color_scheme, strokeWidth=3, interpolate='monotone'
+    )
 
-    # 5. Points
-    points = base.mark_circle(size=80, fill='#18181B', stroke='#3B82F6', strokeWidth=2)
+    # 5. GRADIENT FILL (Fade to transparent)
+    area = base.mark_area(
+        line=False,
+        color=alt.Gradient(
+            gradient='linear',
+            stops=[alt.GradientStop(color=color_scheme, offset=0), alt.GradientStop(color='rgba(0,0,0,0)', offset=1)],
+            x1=1, x2=1, y1=1, y2=0
+        ),
+        opacity=0.15,
+        interpolate='monotone'
+    )
 
-    # 6. Crosshair
+    # 6. POINTS (White Halo)
+    points = base.mark_circle(
+        size=60, fill='#09090B', stroke='white', strokeWidth=2, opacity=1
+    )
+
+    # 7. INTERACTIVE CROSSHAIR
     nearest = alt.selection(type='single', nearest=True, on='mouseover', fields=['Date'], empty='none')
-    rules = base.mark_rule(color='#52525B', strokeWidth=1).encode(
+    rules = base.mark_rule(color='#52525B', strokeWidth=1, strokeDash=[2,2]).encode(
         opacity=alt.condition(nearest, alt.value(1), alt.value(0))
     ).add_selection(nearest)
 
-    # 7. Events
+    # 8. EVENTS (LOLLIPOP STYLE)
     event_layer = None
     if not events_df.empty:
+        # The Stick
         ev_rule = alt.Chart(events_df).mark_rule(
-            color='#F43F5E', strokeWidth=1.5, strokeDash=[4,4]
-        ).encode(x='Date:T', tooltip=['Event', 'Notes'])
+            color='#A1A1AA', strokeWidth=1, opacity=0.5
+        ).encode(x='Date:T')
         
+        # The Bubble (Icon)
+        # We use a simple circle + text for the "Icon" effect
+        ev_point = alt.Chart(events_df).mark_circle(
+            size=200, color='#18181B', stroke='#A1A1AA', strokeWidth=1
+        ).encode(x='Date:T', y=alt.value(20)) # Fixed at top
+
+        # The Text Label
         ev_text = alt.Chart(events_df).mark_text(
-            align='left', baseline='middle', dx=5, dy=-80,
-            color='#F43F5E', angle=0, fontSize=10, fontWeight=600
-        ).encode(x='Date:T', text='Event')
-        event_layer = ev_rule + ev_text
+            align='center', baseline='middle', dy=-15,
+            color='#E4E4E7', font='JetBrains Mono', fontSize=10, fontWeight='bold'
+        ).encode(x='Date:T', y=alt.value(20), text='Event')
+        
+        event_layer = ev_rule + ev_point + ev_text
 
     # Assemble
-    final_chart = line + points + area + rules
+    final_chart = glow + area + line + points + rules
     if bands: final_chart = bands + final_chart
     if event_layer: final_chart = final_chart + event_layer
 
-    return final_chart.properties(height=320).configure_view(strokeWidth=0).interactive()
+    return final_chart.properties(height=350, background='transparent').configure_view(strokeWidth=0).interactive()
 
 # --- 6. MAIN APP ---
 master_df, results_df, events_df, status = load_data()
 
 # HEADER
 st.markdown("""
-<div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #333; padding-bottom:10px; margin-bottom:10px;">
+<div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #1E1E20; padding-bottom:15px; margin-bottom:20px;">
     <div>
-        <h2 style="margin:0; font-family:'Inter'; font-weight:700; letter-spacing:-1px;">HealthOS <span style="color:#71717A; font-weight:400;">Clinical</span></h2>
+        <h2 style="margin:0; font-family:'Inter'; font-weight:700; letter-spacing:-0.5px; font-size:20px;">HealthOS <span style="color:#52525B; font-weight:400;">PRO</span></h2>
     </div>
     <div style="text-align:right;">
-         <span class="tag" style="background:#064E3B; color:#34D399; border:1px solid #059669;">Patient: Demo Mode</span>
+         <span class="tag" style="background:#0F172A; color:#38BDF8; border:1px solid #0EA5E9;">PATIENT: DEMO</span>
     </div>
 </div>
 """, unsafe_allow_html=True)
 
 # TOP NAVIGATION (HARDCODED CAPS FORCED)
-# We now use explicit CAPS strings here to force the UI to match
 mode = st.radio("Navigation", ["DASHBOARD", "TREND ANALYSIS", "PROTOCOL LOG", "DATA TOOLS"], horizontal=True, label_visibility="collapsed")
 
 # MODE 1: DASHBOARD
@@ -407,11 +437,9 @@ if mode == "DASHBOARD":
         st.info("No Data Loaded. Go to 'Data Tools' to upload."); st.stop()
     
     unique_dates = sorted(results_df['Date'].dropna().unique(), reverse=True)
-    # FORCE UPPERCASE DATE: 15 JUL 2024
     date_options = [d.strftime('%d %b %Y').upper() for d in unique_dates if pd.notna(d)]
     date_map = {d.strftime('%d %b %Y').upper(): d.strftime('%Y-%m-%d') for d in unique_dates if pd.notna(d)}
 
-    # Custom Toolbar Container for the Dropdown
     c_sel, _ = st.columns([1, 3])
     with c_sel:
         st.caption("REPORT DATE")
@@ -443,10 +471,10 @@ if mode == "DASHBOARD":
     """, unsafe_allow_html=True)
     
     st.markdown(f"""<div class="hud-card"><div class="hud-val" style="color:#FAFAFA">{len(df_display)}</div><div class="hud-label">TOTAL TESTED</div></div>""", unsafe_allow_html=True)
-    st.markdown(f"""<div class="hud-card"><div class="hud-val" style="color:#3B82F6">{stats['Blue']}</div><div class="hud-label">OPTIMAL</div></div>""", unsafe_allow_html=True)
-    st.markdown(f"""<div class="hud-card"><div class="hud-val" style="color:#10B981">{stats['Green']}</div><div class="hud-label">NORMAL</div></div>""", unsafe_allow_html=True)
-    st.markdown(f"""<div class="hud-card"><div class="hud-val" style="color:#F59E0B">{stats['Orange']}</div><div class="hud-label">BORDERLINE</div></div>""", unsafe_allow_html=True)
-    st.markdown(f"""<div class="hud-card"><div class="hud-val" style="color:#EF4444">{stats['Red']}</div><div class="hud-label">ABNORMAL</div></div>""", unsafe_allow_html=True)
+    st.markdown(f"""<div class="hud-card"><div class="hud-val" style="color:#22D3EE">{stats['Blue']}</div><div class="hud-label">OPTIMAL</div></div>""", unsafe_allow_html=True)
+    st.markdown(f"""<div class="hud-card"><div class="hud-val" style="color:#34D399">{stats['Green']}</div><div class="hud-label">NORMAL</div></div>""", unsafe_allow_html=True)
+    st.markdown(f"""<div class="hud-card"><div class="hud-val" style="color:#FBBF24">{stats['Orange']}</div><div class="hud-label">BORDERLINE</div></div>""", unsafe_allow_html=True)
+    st.markdown(f"""<div class="hud-card"><div class="hud-val" style="color:#F87171">{stats['Red']}</div><div class="hud-label">ABNORMAL</div></div>""", unsafe_allow_html=True)
     
     st.markdown("</div>", unsafe_allow_html=True)
     
