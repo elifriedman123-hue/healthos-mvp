@@ -3,10 +3,10 @@ import pandas as pd
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import json
+import altair as alt
 import os
 import re
 from difflib import SequenceMatcher
-from streamlit_echarts import st_echarts
 from datetime import datetime
 
 # --- 1. CONFIGURATION ---
@@ -16,13 +16,13 @@ st.set_page_config(
     initial_sidebar_state="collapsed" 
 )
 
-# --- 2. UI STYLING (Cinematic Dark Mode) ---
+# --- 2. UI STYLING (Clean & Premium) ---
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap');
 
     /* GLOBAL RESET */
-    [data-testid="stAppViewContainer"] { background-color: #000000; color: #E4E4E7; font-family: 'Inter', sans-serif; }
+    [data-testid="stAppViewContainer"] { background-color: #09090B; color: #E4E4E7; font-family: 'Inter', sans-serif; }
     [data-testid="stHeader"] { display: none; }
     .block-container { padding-top: 1.5rem; padding-bottom: 5rem; }
 
@@ -30,7 +30,7 @@ st.markdown("""
     [data-testid="stRadio"] > label { display: none; }
     div[role="radiogroup"] {
         flex-direction: row;
-        background-color: #09090B;
+        background-color: #18181B;
         padding: 4px;
         border-radius: 12px;
         border: 1px solid #27272A;
@@ -62,12 +62,11 @@ st.markdown("""
         white-space: nowrap;
     }
     
-    div[role="radiogroup"] label:hover { background-color: #18181B; cursor: pointer; }
-    
+    div[role="radiogroup"] label:hover { background-color: #27272A; cursor: pointer; }
     div[role="radiogroup"] label[data-checked="true"] {
-        background-color: #18181B;
+        background-color: #27272A;
         border: 1px solid #3F3F46;
-        box-shadow: 0 0 20px rgba(56, 189, 248, 0.05); /* Subtle Blue Glow */
+        box-shadow: 0 0 15px rgba(255, 255, 255, 0.05);
     }
     div[role="radiogroup"] label[data-checked="true"] > div[data-testid="stMarkdownContainer"] > p { color: #FAFAFA; }
 
@@ -89,7 +88,7 @@ st.markdown("""
 
     /* --- HUD CARD --- */
     .hud-card {
-        background: linear-gradient(180deg, rgba(24, 24, 27, 0.4) 0%, rgba(9, 9, 11, 0.4) 100%);
+        background: linear-gradient(180deg, rgba(39, 39, 42, 0.4) 0%, rgba(24, 24, 27, 0.4) 100%);
         backdrop-filter: blur(10px);
         border: 1px solid rgba(255, 255, 255, 0.05);
         border-radius: 16px;
@@ -103,18 +102,18 @@ st.markdown("""
 
     /* --- CLINICAL ROW --- */
     .clinical-row {
-        background: rgba(15, 15, 17, 0.6);
-        border-left: 2px solid #333;
+        background: rgba(39, 39, 42, 0.3);
+        border-left: 3px solid #333;
         padding: 16px 20px;
         margin-bottom: 8px;
         border-radius: 0px 8px 8px 0px;
         display: flex;
         justify-content: space-between;
         align-items: center;
-        border: 1px solid rgba(255,255,255,0.02);
+        border: 1px solid rgba(255,255,255,0.03);
     }
-    .c-marker { font-family: 'Inter', sans-serif; font-weight: 500; font-size: 14px; color: #D4D4D8; letter-spacing: 0.2px; }
-    .c-sub { font-size: 11px; color: #52525B; margin-top: 4px; font-family: 'JetBrains Mono', monospace; }
+    .c-marker { font-family: 'Inter', sans-serif; font-weight: 600; font-size: 14px; color: #E4E4E7; letter-spacing: 0.2px; }
+    .c-sub { font-size: 11px; color: #71717A; margin-top: 4px; font-family: 'JetBrains Mono', monospace; }
     .c-value { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 16px; }
     
     /* HEADERS */
@@ -124,9 +123,9 @@ st.markdown("""
         font-weight: 700;
         text-transform: uppercase;
         letter-spacing: 2px;
-        color: #3F3F46;
+        color: #52525B;
         margin-bottom: 20px;
-        border-bottom: 1px solid #18181B;
+        border-bottom: 1px solid #27272A;
         padding-bottom: 8px;
         margin-top: 20px;
     }
@@ -302,131 +301,109 @@ def get_detailed_status(val, master_row, marker_name):
         return "IN RANGE", "#34D399", "c-green", rng_str, 4
     except: return "ERROR", "#71717A", "c-grey", "Error", 5
 
-# --- 6. THE CINEMATIC CHART ENGINE (V2 - FIXED EVENTS & CLUTTER) ---
-def render_cinematic_chart(marker_name, results_df, events_df, master_df):
+# --- 6. THE ALTAIR PRO ENGINE (The Return of Usability) ---
+def plot_clinical_trend(marker_name, results_df, events_df, master_df):
     chart_data = results_df[results_df['Marker'] == marker_name].sort_values('Date').copy()
-    if chart_data.empty: return
+    if chart_data.empty: return None
 
-    # Prepare Data
-    dates = chart_data['Date'].dt.strftime('%Y-%m-%d').tolist()
-    values = chart_data['NumericValue'].tolist()
-    
-    # Get Range
+    # Range
     min_val, max_val = 0, 0
     master_row = fuzzy_match(marker_name, master_df)
     if master_row is not None:
         min_val, max_val = parse_range(master_row['Standard Range'])
 
-    # Build MarkLines (The "Reference Corridor")
-    mark_area_data = []
-    if max_val > 0:
-        mark_area_data = [
-            [{"yAxis": min_val, "itemStyle": {"color": "rgba(34, 197, 94, 0.03)"}}, {"yAxis": max_val}]
-        ]
+    # 1. Base Chart
+    base = alt.Chart(chart_data).encode(
+        x=alt.X('Date:T', title=None, axis=alt.Axis(
+            format='%d %b %y', 
+            labelColor='#71717A', 
+            labelFont='JetBrains Mono',
+            tickColor='#27272A', 
+            domain=False, 
+            grid=False
+        )),
+        y=alt.Y('NumericValue:Q', title=None, scale=alt.Scale(zero=False, padding=20), axis=alt.Axis(
+            labelColor='#71717A', 
+            labelFont='JetBrains Mono',
+            tickColor='#27272A', 
+            domain=False, 
+            gridColor='#27272A',
+            gridOpacity=0.5
+        ))
+    )
 
-    # Build Events (The "Lollipop" Pins) - FIXED DATE SNAPPING
-    mark_line_data = []
-    if not events_df.empty:
-        for _, row in events_df.iterrows():
-            # Logic: Find the CLOSEST date in the chart data to snap the event to
-            # This prevents events from disappearing if the date isn't exact
-            event_date = row['Date']
-            closest_date = min(chart_data['Date'], key=lambda x: abs(x - event_date))
-            d_str = closest_date.strftime('%Y-%m-%d')
-            
-            label = row['Event']
-            # Add a vertical line for each event
-            mark_line_data.append({
-                "xAxis": d_str,
-                "label": {
-                    "formatter": f"{label}",
-                    "position": "insideEndTop",
-                    "color": "#E4E4E7",
-                    "fontFamily": "JetBrains Mono",
-                    "fontSize": 10,
-                    "backgroundColor": "#18181B",
-                    "padding": [6, 10],
-                    "borderRadius": 4,
-                    "borderColor": "#3F3F46",
-                    "borderWidth": 1,
-                    "distance": 10
-                },
-                "lineStyle": {"color": "#6366F1", "type": "solid", "width": 2, "opacity": 0.6}
-            })
+    # 2. Reference Band (Subtle)
+    bands = alt.Chart(pd.DataFrame({'y': [min_val], 'y2': [max_val]})).mark_rect(
+        color='#22C55E', opacity=0.08
+    ).encode(y='y', y2='y2') if max_val > 0 else None
 
-    # THE ECHARTS CONFIG (JSON)
-    option = {
-        "backgroundColor": "transparent",
-        "tooltip": {
-            "trigger": "axis",
-            "backgroundColor": "rgba(9, 9, 11, 0.8)",
-            "borderColor": "#27272A",
-            "textStyle": {"color": "#FAFAFA", "fontFamily": "JetBrains Mono"},
-            "padding": 16,
-            "borderRadius": 8,
-            "backdropFilter": "blur(4px)"
-        },
-        "grid": {"left": "1%", "right": "3%", "bottom": "5%", "top": "15%", "containLabel": True},
-        "xAxis": {
-            "type": "category",
-            "boundaryGap": False,
-            "data": dates,
-            "axisLine": {"show": False},
-            "axisTick": {"show": False},
-            "axisLabel": {
-                "color": "#52525B", 
-                "fontFamily": "JetBrains Mono", 
-                "margin": 20,
-                "formatter": "{value}" 
-            }
-        },
-        "yAxis": {
-            "type": "value",
-            "scale": True, # PREVENTS FLAT LINES
-            "splitLine": {"show": True, "lineStyle": {"color": "#18181B", "width": 1}}, # SUBTLE GRID
-            "axisLabel": {"color": "#52525B", "fontFamily": "JetBrains Mono"}
-        },
-        "series": [
-            {
-                "name": marker_name,
-                "type": "line",
-                "smooth": 0.5, # SMOOTHER CURVES
-                "symbol": "circle",
-                "symbolSize": 8,
-                "showSymbol": False, # HIDE DOTS (Only show on hover)
-                "itemStyle": {"color": "#000000", "borderColor": "#38BDF8", "borderWidth": 2},
-                "lineStyle": {
-                    "width": 3,
-                    "color": "#38BDF8",
-                    "shadowColor": "rgba(56, 189, 248, 0.6)", # STRONGER GLOW
-                    "shadowBlur": 20
-                },
-                "areaStyle": {
-                    "color": {
-                        "type": "linear",
-                        "x": 0, "y": 0, "x2": 0, "y2": 1,
-                        "colorStops": [
-                            {"offset": 0, "color": "rgba(56, 189, 248, 0.2)"}, 
-                            {"offset": 1, "color": "rgba(56, 189, 248, 0)"}
-                        ]
-                    }
-                },
-                "data": values,
-                "markLine": {
-                    "symbol": ["none", "none"],
-                    "data": mark_line_data,
-                    "silent": True,
-                    "animation": False
-                },
-                "markArea": {
-                    "silent": True,
-                    "data": mark_area_data
-                }
-            }
-        ]
-    }
+    # 3. Gradient Area Fill (The "Modern" Touch)
+    area = base.mark_area(
+        line={'color': '#38BDF8'},
+        color=alt.Gradient(
+            gradient='linear',
+            stops=[alt.GradientStop(color='#38BDF8', offset=0), alt.GradientStop(color='rgba(56, 189, 248, 0)', offset=1)],
+            x1=1, x2=1, y1=1, y2=0
+        ),
+        opacity=0.3
+    )
+
+    # 4. The Line (Crisp & Clean)
+    line = base.mark_line(
+        color='#38BDF8', 
+        strokeWidth=3,
+        interpolate='monotone'
+    )
+
+    # 5. Interactive Selection (Crosshair)
+    nearest = alt.selection(type='single', nearest=True, on='mouseover', fields=['Date'], empty='none')
     
-    st_echarts(options=option, height="350px")
+    # 6. Points (Only visible on Hover)
+    points = base.mark_circle(size=80, fill='#09090B', stroke='#38BDF8', strokeWidth=2).encode(
+        opacity=alt.condition(nearest, alt.value(1), alt.value(0))
+    )
+
+    # 7. Crosshair Rule
+    rule = base.mark_rule(color='#52525B', strokeDash=[4,4]).encode(
+        opacity=alt.condition(nearest, alt.value(1), alt.value(0))
+    ).add_selection(nearest)
+
+    # 8. Tooltips
+    tooltip_points = base.mark_circle(opacity=0).encode(
+        tooltip=[
+            alt.Tooltip('Date:T', format='%d %b %Y'),
+            alt.Tooltip('NumericValue:Q', title=marker_name),
+            alt.Tooltip('Source')
+        ]
+    ).add_selection(nearest)
+
+    # 9. Events (Lollipop Style)
+    event_layer = None
+    if not events_df.empty:
+        # The Line
+        ev_rule = alt.Chart(events_df).mark_rule(
+            color='#6366F1', strokeWidth=1, opacity=0.8
+        ).encode(x='Date:T')
+        
+        # The "Bubble" at top
+        ev_circle = alt.Chart(events_df).mark_circle(
+            color='#09090B', stroke='#6366F1', strokeWidth=2, size=100
+        ).encode(x='Date:T', y=alt.value(20)) # Fixed to top
+
+        # The Text
+        ev_text = alt.Chart(events_df).mark_text(
+            align='center', baseline='bottom', dy=-15,
+            color='#E4E4E7', font='JetBrains Mono', fontSize=10, fontWeight=600
+        ).encode(x='Date:T', y=alt.value(20), text='Event')
+        
+        event_layer = ev_rule + ev_circle + ev_text
+
+    # Assemble
+    final_chart = area + line + points + rule + tooltip_points
+    if bands: final_chart = bands + final_chart
+    if event_layer: final_chart = final_chart + event_layer
+
+    return final_chart.properties(height=320, background='transparent').configure_view(strokeWidth=0)
 
 # --- 7. MAIN APP ---
 master_df, results_df, events_df, status = load_data()
@@ -533,7 +510,8 @@ elif mode == "TREND ANALYSIS":
     
     for m in selected_markers:
         st.markdown(f"#### {m}")
-        render_cinematic_chart(m, results_df, events_df, master_df)
+        chart = plot_clinical_trend(m, results_df, events_df, master_df)
+        if chart: st.altair_chart(chart, use_container_width=True)
         st.markdown("<br>", unsafe_allow_html=True)
 
 # MODE 3: PROTOCOL
