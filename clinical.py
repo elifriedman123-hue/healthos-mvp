@@ -16,7 +16,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed" 
 )
 
-# --- 2. UI STYLING (Clean & Premium) ---
+# --- 2. UI STYLING (The "Pro" Look) ---
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap');
@@ -161,6 +161,19 @@ def get_google_sheet_client():
         except: return None
     else: return None
 
+# --- NEW: ROBUST NUMBER CLEANER ---
+def clean_numeric_value(val):
+    """Aggressively strips text to find the number."""
+    if pd.isna(val): return None
+    s = str(val).strip()
+    # Remove < or > symbols (e.g. "< 0.5" -> "0.5")
+    s = s.replace('<', '').replace('>', '').replace(',', '')
+    # Extract first valid float pattern
+    match = re.search(r"[-+]?\d*\.\d+|\d+", s)
+    if match:
+        return float(match.group())
+    return None
+
 @st.cache_data(ttl=5)
 def load_data():
     client = get_google_sheet_client()
@@ -184,7 +197,10 @@ def load_data():
             data = ws_res.get_all_values()
             results = pd.DataFrame(data[1:], columns=data[0])
             results['Date'] = pd.to_datetime(results['Date'], errors='coerce')
-            results['NumericValue'] = pd.to_numeric(results['Value'], errors='coerce')
+            
+            # USE NEW CLEANER HERE
+            results['NumericValue'] = results['Value'].apply(clean_numeric_value)
+            
         except: results = pd.DataFrame()
 
         try:
@@ -277,9 +293,11 @@ def get_detailed_status(val, master_row, marker_name):
         unit = str(master_row['Unit']) if pd.notna(master_row['Unit']) else ""
         rng_str = f"{s_min} - {s_max} {unit}"
 
+        # 1. Red
         if s_min > 0 and val < s_min: return "OUT OF RANGE", "#F87171", "c-red", rng_str, 1
         if s_max > 0 and val > s_max: return "OUT OF RANGE", "#F87171", "c-red", rng_str, 1
         
+        # 2. Orange
         higher_is_better = ["VITAMIND", "VITAMIN D", "DHEA", "TESTOSTERONE", "MAGNESIUM", "B12", "FOLATE", "HDL", "FERRITIN"]
         if any(x in clean_name for x in higher_is_better):
             if o_min > 0 and val < o_min: return "BORDERLINE", "#FBBF24", "c-orange", rng_str, 2
@@ -293,26 +311,31 @@ def get_detailed_status(val, master_row, marker_name):
             if val < (s_min + buffer): return "BORDERLINE", "#FBBF24", "c-orange", rng_str, 2
             if val > (s_max - buffer): return "BORDERLINE", "#FBBF24", "c-orange", rng_str, 2
 
+        # 3. Blue
         has_optimal = (o_min > 0 or o_max > 0)
         check_min = o_min if o_min > 0 else s_min
         check_max = o_max if o_max > 0 else s_max
         if has_optimal and val >= check_min and val <= check_max: return "OPTIMAL", "#22D3EE", "c-blue", rng_str, 3
         
+        # 4. Green
         return "IN RANGE", "#34D399", "c-green", rng_str, 4
     except: return "ERROR", "#71717A", "c-grey", "Error", 5
 
-# --- 6. THE ALTAIR PRO ENGINE (The Return of Usability) ---
+# --- 6. VISUALIZATION ENGINE (Robust & Intuitive) ---
 def plot_clinical_trend(marker_name, results_df, events_df, master_df):
-    chart_data = results_df[results_df['Marker'] == marker_name].sort_values('Date').copy()
+    # Filter and sort
+    chart_data = results_df[results_df['Marker'] == marker_name].copy()
+    chart_data = chart_data.dropna(subset=['NumericValue']).sort_values('Date')
+    
     if chart_data.empty: return None
 
-    # Range
+    # Get Range
     min_val, max_val = 0, 0
     master_row = fuzzy_match(marker_name, master_df)
     if master_row is not None:
         min_val, max_val = parse_range(master_row['Standard Range'])
 
-    # 1. Base Chart
+    # 1. Base
     base = alt.Chart(chart_data).encode(
         x=alt.X('Date:T', title=None, axis=alt.Axis(
             format='%d %b %y', 
@@ -332,12 +355,12 @@ def plot_clinical_trend(marker_name, results_df, events_df, master_df):
         ))
     )
 
-    # 2. Reference Band (Subtle)
+    # 2. Reference Band
     bands = alt.Chart(pd.DataFrame({'y': [min_val], 'y2': [max_val]})).mark_rect(
         color='#22C55E', opacity=0.08
     ).encode(y='y', y2='y2') if max_val > 0 else None
 
-    # 3. Gradient Area Fill (The "Modern" Touch)
+    # 3. Gradient Area
     area = base.mark_area(
         line={'color': '#38BDF8'},
         color=alt.Gradient(
@@ -348,22 +371,22 @@ def plot_clinical_trend(marker_name, results_df, events_df, master_df):
         opacity=0.3
     )
 
-    # 4. The Line (Crisp & Clean)
+    # 4. Line
     line = base.mark_line(
         color='#38BDF8', 
         strokeWidth=3,
         interpolate='monotone'
     )
 
-    # 5. Interactive Selection (Crosshair)
+    # 5. Interactive
     nearest = alt.selection(type='single', nearest=True, on='mouseover', fields=['Date'], empty='none')
     
-    # 6. Points (Only visible on Hover)
+    # 6. Points (Visible on Hover)
     points = base.mark_circle(size=80, fill='#09090B', stroke='#38BDF8', strokeWidth=2).encode(
         opacity=alt.condition(nearest, alt.value(1), alt.value(0))
     )
 
-    # 7. Crosshair Rule
+    # 7. Crosshair
     rule = base.mark_rule(color='#52525B', strokeDash=[4,4]).encode(
         opacity=alt.condition(nearest, alt.value(1), alt.value(0))
     ).add_selection(nearest)
@@ -377,20 +400,17 @@ def plot_clinical_trend(marker_name, results_df, events_df, master_df):
         ]
     ).add_selection(nearest)
 
-    # 9. Events (Lollipop Style)
+    # 9. Events
     event_layer = None
     if not events_df.empty:
-        # The Line
         ev_rule = alt.Chart(events_df).mark_rule(
             color='#6366F1', strokeWidth=1, opacity=0.8
         ).encode(x='Date:T')
         
-        # The "Bubble" at top
         ev_circle = alt.Chart(events_df).mark_circle(
             color='#09090B', stroke='#6366F1', strokeWidth=2, size=100
-        ).encode(x='Date:T', y=alt.value(20)) # Fixed to top
+        ).encode(x='Date:T', y=alt.value(20))
 
-        # The Text
         ev_text = alt.Chart(events_df).mark_text(
             align='center', baseline='bottom', dy=-15,
             color='#E4E4E7', font='JetBrains Mono', fontSize=10, fontWeight=600
@@ -420,7 +440,7 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# TOP NAVIGATION
+# TOP NAVIGATION (HARDCODED CAPS FORCED)
 mode = st.radio("Navigation", ["DASHBOARD", "TREND ANALYSIS", "PROTOCOL LOG", "DATA TOOLS"], horizontal=True, label_visibility="collapsed")
 
 # MODE 1: DASHBOARD
