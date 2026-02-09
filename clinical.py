@@ -21,12 +21,12 @@ st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap');
 
-    /* GLOBAL RESET */
+    /* GLOBAL RESET & DARK MODE */
     [data-testid="stAppViewContainer"] { background-color: #000000; color: #E4E4E7; font-family: 'Inter', sans-serif; }
     [data-testid="stHeader"] { display: none; }
     .block-container { padding-top: 2rem; padding-bottom: 5rem; }
 
-    /* NAVIGATION */
+    /* NAVIGATION BAR */
     [data-testid="stRadio"] > label { display: none; }
     div[role="radiogroup"] {
         flex-direction: row;
@@ -157,23 +157,29 @@ def get_google_sheet_client():
         except: return None
     else: return None
 
-# --- UPDATED CLEANER (HANDLES "µ" and "PSA" issues) ---
+# --- ROBUST PARSING FUNCTIONS ---
 def clean_numeric_value(val):
     if pd.isna(val) or val == "": return None
-    # Convert to string and handle standard replacements
     s = str(val).strip().replace(',', '').replace(' ', '')
-    # Handle the specific µ symbol which often breaks things
-    s = s.replace('µ', 'u').replace('ug/L', '').replace('ng/mL', '')
-    
-    # Remove inequality signs
+    s = s.replace('µ', 'u').replace('ug/L', '').replace('ng/mL', '') # PSA fixes
     s = s.replace('<', '').replace('>', '')
-    
-    # Find the number
     match = re.search(r"[-+]?\d*\.\d+|\d+", s)
     if match:
         try: return float(match.group())
         except: return None
     return None
+
+def parse_flexible_date(date_str):
+    if pd.isna(date_str) or date_str == "": return pd.NaT
+    # Try multiple formats
+    formats = ['%Y-%m-%d', '%d/%m/%Y', '%m/%d/%Y', '%d-%m-%Y', '%Y/%m/%d']
+    for fmt in formats:
+        try:
+            return pd.to_datetime(date_str, format=fmt)
+        except:
+            continue
+    # Fallback to standard parser
+    return pd.to_datetime(date_str, errors='coerce')
 
 @st.cache_data(ttl=5)
 def load_data():
@@ -186,8 +192,7 @@ def load_data():
             ws_master = sh.worksheet("Master")
             m_data = ws_master.get_all_values()
             master = pd.DataFrame(m_data[1:], columns=m_data[0]) if len(m_data) > 1 else pd.DataFrame()
-        except:
-            master = pd.DataFrame() 
+        except: master = pd.DataFrame() 
 
         try:
             ws_res = sh.worksheet("Results")
@@ -195,13 +200,12 @@ def load_data():
             results = pd.DataFrame(data[1:], columns=data[0])
             results.columns = [c.strip() for c in results.columns] 
             
-            # Deduplicate
             results = results.drop_duplicates(subset=['Date', 'Marker', 'Value'])
             
-            # Robust Date Parsing
-            results['Date'] = pd.to_datetime(results['Date'], errors='coerce', dayfirst=True) 
+            # Apply Robust Date Parsing
+            results['Date'] = results['Date'].apply(parse_flexible_date)
             
-            # Robust Number Cleaning
+            # Apply Robust Number Cleaning
             results['NumericValue'] = results['Value'].apply(clean_numeric_value)
             
         except: results = pd.DataFrame()
@@ -210,7 +214,7 @@ def load_data():
             ws_ev = sh.worksheet("Events")
             ev_data = ws_ev.get_all_values()
             events = pd.DataFrame(ev_data[1:], columns=ev_data[0])
-            events['Date'] = pd.to_datetime(events['Date'], errors='coerce', dayfirst=True)
+            events['Date'] = events['Date'].apply(parse_flexible_date)
         except: 
             ws_ev = sh.add_worksheet("Events", 1000, 5)
             ws_ev.append_row(["Date", "Event", "Type", "Notes"])
@@ -243,9 +247,22 @@ def process_csv_upload(uploaded_file):
             uploaded_file.seek(0)
             df = pd.read_csv(uploaded_file, encoding='ISO-8859-1')
             
-        col_map = {'Biomarker': 'Marker', 'Test': 'Marker', 'Name': 'Marker', 'Result': 'Value', 'Reading': 'Value', 'Time': 'Date', 'Collected': 'Date'}
-        df = df.rename(columns=col_map)
+        # Case Insensitive Column Mapping
+        col_map = {c: c.lower() for c in df.columns}
+        df.columns = df.columns.str.lower()
         
+        # Standardize known columns
+        rename_dict = {}
+        for c in df.columns:
+            if c in ['biomarker', 'test', 'name', 'analyte']: rename_dict[c] = 'Marker'
+            elif c in ['result', 'reading', 'value', 'concentration']: rename_dict[c] = 'Value'
+            elif c in ['time', 'collected', 'date', 'date collected']: rename_dict[c] = 'Date'
+            elif c in ['unit', 'units']: rename_dict[c] = 'Unit'
+            elif c in ['flag', 'status']: rename_dict[c] = 'Flag'
+            
+        df = df.rename(columns=rename_dict)
+        
+        # Ensure we have required columns
         db_columns = ['Marker', 'Value', 'Unit', 'Flag', 'Date', 'Source']
         for col in db_columns:
             if col not in df.columns: df[col] = "" 
@@ -308,14 +325,20 @@ def get_detailed_status(val, master_row, marker_name):
         return "IN RANGE", "#34D399", "c-green", rng_str, 4
     except: return "ERROR", "#71717A", "c-grey", "Error", 5
 
-# --- 6. CINEMATIC CHART ENGINE (RED ZONES + HIGH VIS EVENTS) ---
+# --- 6. CINEMATIC CHART ENGINE (WITH DIAGNOSTICS) ---
 def plot_clinical_trend(marker_name, results_df, events_df, master_df):
     clean_target = smart_clean(marker_name)
     results_df['MatchKey'] = results_df['Marker'].apply(smart_clean)
     chart_data = results_df[results_df['MatchKey'] == clean_target].copy()
+    
+    # Debug: Check Raw Data before filtering
+    raw_count = len(chart_data)
+    
+    # Filter valid data
     chart_data = chart_data.dropna(subset=['NumericValue', 'Date']).sort_values('Date')
     
-    if chart_data.empty: return "EMPTY"
+    if chart_data.empty:
+        return "EMPTY", raw_count
 
     # Range
     min_val, max_val = 0, 0
@@ -323,7 +346,7 @@ def plot_clinical_trend(marker_name, results_df, events_df, master_df):
     if master_row is not None:
         min_val, max_val = parse_range(master_row['Standard Range'])
 
-    # Y-Axis padding calculation to ensure Red Zones are visible
+    # Y-Axis Scaling for Red Zones
     data_max = chart_data['NumericValue'].max()
     y_top = max(data_max, max_val) * 1.2
     y_bottom = 0
@@ -349,22 +372,19 @@ def plot_clinical_trend(marker_name, results_df, events_df, master_df):
         ))
     )
 
-    # 2. RED DANGER ZONES (The fix for "Danger")
-    # Low Danger Zone (0 to min_val)
+    # 2. Red Zones
     danger_low = alt.Chart(pd.DataFrame({'y': [0], 'y2': [min_val]})).mark_rect(
-        color='#EF4444', opacity=0.1 # Red
+        color='#EF4444', opacity=0.1
     ).encode(y='y', y2='y2') if min_val > 0 else None
 
-    # High Danger Zone (max_val to Top)
     danger_high = alt.Chart(pd.DataFrame({'y': [max_val], 'y2': [y_top]})).mark_rect(
-        color='#EF4444', opacity=0.1 # Red
+        color='#EF4444', opacity=0.1
     ).encode(y='y', y2='y2') if max_val > 0 else None
 
-    # 3. Chart Line
+    # 3. Line Style
     theme_color = '#38BDF8'
     glow = base.mark_line(color=theme_color, strokeWidth=8, opacity=0.2, interpolate='monotone')
     line = base.mark_line(color=theme_color, strokeWidth=3, interpolate='monotone')
-    
     area = base.mark_area(
         line=False,
         color=alt.Gradient(
@@ -376,13 +396,12 @@ def plot_clinical_trend(marker_name, results_df, events_df, master_df):
         interpolate='monotone'
     )
 
-    # 4. Interactive Points
+    # 4. Points & Tooltips
     nearest = alt.selection(type='single', nearest=True, on='mouseover', fields=['Date'], empty='none')
     points = base.mark_circle(size=80, fill='#000000', stroke=theme_color, strokeWidth=2).encode(
         opacity=alt.condition(nearest, alt.value(1), alt.value(0))
     ).add_selection(nearest)
 
-    # 5. Tooltips
     tooltips = base.mark_circle(opacity=0).encode(
         tooltip=[
             alt.Tooltip('Date:T', format='%d %b %Y'),
@@ -391,20 +410,17 @@ def plot_clinical_trend(marker_name, results_df, events_df, master_df):
         ]
     ).add_selection(nearest)
 
-    # 6. HIGH-VIS EVENTS (The fix for "Clear Interventions")
+    # 5. Events
     event_layer = None
     if not events_df.empty:
-        # Thick Orange Line
         ev_rule = alt.Chart(events_df).mark_rule(
             color='#F97316', strokeWidth=2, strokeDash=[4,4], opacity=0.8
         ).encode(x='Date:T')
         
-        # Big Orange Bubble
         ev_bubble = alt.Chart(events_df).mark_point(
             filled=True, fill='#09090B', stroke='#F97316', size=1500, shape='circle', strokeWidth=2
         ).encode(x='Date:T', y=alt.value(30)) 
 
-        # Bold Label inside bubble
         ev_text = alt.Chart(events_df).mark_text(
             align='center', baseline='middle',
             color='#F97316', font='JetBrains Mono', fontSize=11, fontWeight=800, dy=0
@@ -412,13 +428,12 @@ def plot_clinical_trend(marker_name, results_df, events_df, master_df):
         
         event_layer = ev_rule + ev_bubble + ev_text
 
-    # Assemble
     final = glow + area + line + points + tooltips
     if danger_low: final = danger_low + final
     if danger_high: final = danger_high + final
     if event_layer: final = final + event_layer
     
-    return final.properties(height=320, background='transparent').configure_view(strokeWidth=0)
+    return final.properties(height=320, background='transparent').configure_view(strokeWidth=0), raw_count
 
 # --- 7. MAIN APP ---
 master_df, results_df, events_df, status = load_data()
@@ -435,7 +450,7 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# TOP NAVIGATION (CAPS FORCED)
+# TOP NAVIGATION
 mode = st.radio("Navigation", ["DASHBOARD", "TREND ANALYSIS", "PROTOCOL LOG", "DATA TOOLS"], horizontal=True, label_visibility="collapsed")
 
 # MODE 1: DASHBOARD
@@ -525,9 +540,14 @@ elif mode == "TREND ANALYSIS":
     
     for m in selected_markers:
         st.markdown(f"#### {m}")
-        chart = plot_clinical_trend(m, results_df, events_df, master_df)
+        chart, raw_rows = plot_clinical_trend(m, results_df, events_df, master_df)
+        
         if chart == "EMPTY":
-            st.warning(f"No valid numeric data found for {m}.")
+            st.error(f"⚠️ No readable data for {m}.")
+            with st.expander(f"Diagnostics: Found {raw_rows} raw rows"):
+                clean_target = smart_clean(m)
+                st.write(results_df[results_df['MatchKey'] == clean_target])
+                st.caption("Check if 'NumericValue' column is NaN or 'Date' is NaT.")
         elif chart: 
             st.altair_chart(chart, use_container_width=True)
         st.markdown("<br>", unsafe_allow_html=True)
