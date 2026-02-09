@@ -16,21 +16,21 @@ st.set_page_config(
     initial_sidebar_state="collapsed" 
 )
 
-# --- 2. UI STYLING (The "Pro" Look) ---
+# --- 2. CINEMATIC UI STYLING (The "Ferritin" Look) ---
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap');
 
-    /* GLOBAL RESET */
-    [data-testid="stAppViewContainer"] { background-color: #09090B; color: #E4E4E7; font-family: 'Inter', sans-serif; }
+    /* GLOBAL RESET & DARK MODE */
+    [data-testid="stAppViewContainer"] { background-color: #000000; color: #E4E4E7; font-family: 'Inter', sans-serif; }
     [data-testid="stHeader"] { display: none; }
-    .block-container { padding-top: 1.5rem; padding-bottom: 5rem; }
+    .block-container { padding-top: 2rem; padding-bottom: 5rem; }
 
     /* --- NAVIGATION BAR --- */
     [data-testid="stRadio"] > label { display: none; }
     div[role="radiogroup"] {
         flex-direction: row;
-        background-color: #18181B;
+        background-color: #09090B;
         padding: 4px;
         border-radius: 12px;
         border: 1px solid #27272A;
@@ -62,11 +62,12 @@ st.markdown("""
         white-space: nowrap;
     }
     
-    div[role="radiogroup"] label:hover { background-color: #27272A; cursor: pointer; }
+    div[role="radiogroup"] label:hover { background-color: #18181B; cursor: pointer; }
+    
     div[role="radiogroup"] label[data-checked="true"] {
-        background-color: #27272A;
+        background-color: #18181B;
         border: 1px solid #3F3F46;
-        box-shadow: 0 0 15px rgba(255, 255, 255, 0.05);
+        box-shadow: 0 0 25px rgba(255, 255, 255, 0.05); /* Subtle white glow */
     }
     div[role="radiogroup"] label[data-checked="true"] > div[data-testid="stMarkdownContainer"] > p { color: #FAFAFA; }
 
@@ -88,7 +89,7 @@ st.markdown("""
 
     /* --- HUD CARD --- */
     .hud-card {
-        background: linear-gradient(180deg, rgba(39, 39, 42, 0.4) 0%, rgba(24, 24, 27, 0.4) 100%);
+        background: linear-gradient(180deg, rgba(24, 24, 27, 0.4) 0%, rgba(9, 9, 11, 0.4) 100%);
         backdrop-filter: blur(10px);
         border: 1px solid rgba(255, 255, 255, 0.05);
         border-radius: 16px;
@@ -102,18 +103,18 @@ st.markdown("""
 
     /* --- CLINICAL ROW --- */
     .clinical-row {
-        background: rgba(39, 39, 42, 0.3);
-        border-left: 3px solid #333;
+        background: rgba(15, 15, 17, 0.6);
+        border-left: 2px solid #333;
         padding: 16px 20px;
         margin-bottom: 8px;
         border-radius: 0px 8px 8px 0px;
         display: flex;
         justify-content: space-between;
         align-items: center;
-        border: 1px solid rgba(255,255,255,0.03);
+        border: 1px solid rgba(255,255,255,0.02);
     }
-    .c-marker { font-family: 'Inter', sans-serif; font-weight: 600; font-size: 14px; color: #E4E4E7; letter-spacing: 0.2px; }
-    .c-sub { font-size: 11px; color: #71717A; margin-top: 4px; font-family: 'JetBrains Mono', monospace; }
+    .c-marker { font-family: 'Inter', sans-serif; font-weight: 500; font-size: 14px; color: #D4D4D8; letter-spacing: 0.2px; }
+    .c-sub { font-size: 11px; color: #52525B; margin-top: 4px; font-family: 'JetBrains Mono', monospace; }
     .c-value { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 16px; }
     
     /* HEADERS */
@@ -123,15 +124,13 @@ st.markdown("""
         font-weight: 700;
         text-transform: uppercase;
         letter-spacing: 2px;
-        color: #52525B;
+        color: #3F3F46;
         margin-bottom: 20px;
-        border-bottom: 1px solid #27272A;
+        border-bottom: 1px solid #18181B;
         padding-bottom: 8px;
         margin-top: 20px;
     }
-
-    /* UTILS */
-    .tag { padding: 4px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; text-transform: uppercase; font-family: 'JetBrains Mono', monospace; }
+    
     div.stButton > button { width: 100%; border-radius: 8px; font-family: 'Inter', sans-serif; font-weight: 600; background: #18181B; border: 1px solid #27272A; color: #A1A1AA; }
     </style>
 """, unsafe_allow_html=True)
@@ -161,17 +160,19 @@ def get_google_sheet_client():
         except: return None
     else: return None
 
-# --- NEW: ROBUST NUMBER CLEANER ---
+# --- NEW: ULTRA-ROBUST CLEANER ---
 def clean_numeric_value(val):
-    """Aggressively strips text to find the number."""
-    if pd.isna(val): return None
+    if pd.isna(val) or val == "": return None
     s = str(val).strip()
-    # Remove < or > symbols (e.g. "< 0.5" -> "0.5")
-    s = s.replace('<', '').replace('>', '').replace(',', '')
-    # Extract first valid float pattern
+    # Remove common lab text
+    s = s.replace('<', '').replace('>', '').replace(',', '').replace(' ', '')
+    # Regex to find the first valid number (integer or decimal)
     match = re.search(r"[-+]?\d*\.\d+|\d+", s)
     if match:
-        return float(match.group())
+        try:
+            return float(match.group())
+        except:
+            return None
     return None
 
 @st.cache_data(ttl=5)
@@ -181,28 +182,32 @@ def load_data():
     try:
         sh = client.open(SHEET_NAME)
         
+        # 1. Master Data
         try:
             ws_master = sh.worksheet("Master")
             m_data = ws_master.get_all_values()
-            if len(m_data) > 1: master = pd.DataFrame(m_data[1:], columns=m_data[0])
-            else: master = pd.DataFrame()
+            master = pd.DataFrame(m_data[1:], columns=m_data[0]) if len(m_data) > 1 else pd.DataFrame()
         except:
-            current_dir = os.path.dirname(os.path.abspath(__file__))
-            master_path = os.path.join(current_dir, MASTER_FILE_LOCAL)
-            if os.path.exists(master_path): master = pd.read_csv(master_path)
-            else: master = pd.DataFrame()
+            master = pd.DataFrame() # Fallback
 
+        # 2. Results Data
         try:
             ws_res = sh.worksheet("Results")
             data = ws_res.get_all_values()
             results = pd.DataFrame(data[1:], columns=data[0])
+            
+            # Critical: Standardize Columns
+            results.columns = [c.strip() for c in results.columns] 
+            
+            # Fix Dates
             results['Date'] = pd.to_datetime(results['Date'], errors='coerce')
             
-            # USE NEW CLEANER HERE
+            # Fix Numbers (The Magic Fix)
             results['NumericValue'] = results['Value'].apply(clean_numeric_value)
             
         except: results = pd.DataFrame()
 
+        # 3. Events Data
         try:
             ws_ev = sh.worksheet("Events")
             ev_data = ws_ev.get_all_values()
@@ -240,9 +245,19 @@ def process_csv_upload(uploaded_file):
             uploaded_file.seek(0)
             df = pd.read_csv(uploaded_file, encoding='ISO-8859-1')
             
+        # COLUMN MAPPING (If user uploads different headers)
+        # Try to map to our DB schema: ['Marker', 'Value', 'Unit', 'Flag', 'Date', 'Source']
+        col_map = {
+            'Biomarker': 'Marker', 'Test': 'Marker', 'Name': 'Marker',
+            'Result': 'Value', 'Reading': 'Value',
+            'Time': 'Date', 'Collected': 'Date'
+        }
+        df = df.rename(columns=col_map)
+        
         db_columns = ['Marker', 'Value', 'Unit', 'Flag', 'Date', 'Source']
         for col in db_columns:
-            if col not in df.columns: df[col] = ""
+            if col not in df.columns: df[col] = "" # Fill missing
+            
         df_final = df[db_columns]
         
         client = get_google_sheet_client()
@@ -250,6 +265,7 @@ def process_csv_upload(uploaded_file):
         try: ws = sh.worksheet("Results")
         except: ws = sh.add_worksheet("Results", 1000, 10); ws.append_row(db_columns)
 
+        # Upload as strings to preserve data
         ws.append_rows(df_final.astype(str).values.tolist())
         st.cache_data.clear()
         return "Success"
@@ -274,12 +290,12 @@ def fuzzy_match(marker, master):
 def parse_range(range_str):
     if pd.isna(range_str): return 0,0
     clean = str(range_str).replace('–', '-').replace(',', '.')
-    clean = re.sub(r'(?<=\d)\s(?=\d)', '', clean)
     parts = re.findall(r"[-+]?\d*\.\d+|\d+", clean)
     if len(parts) >= 2: return float(parts[0]), float(parts[1])
     return 0, 0
 
 def get_detailed_status(val, master_row, marker_name):
+    # (Same logic as before, just kept compact)
     try:
         s_min, s_max = parse_range(master_row['Standard Range'])
         try: o_min = float(str(master_row['Optimal Min']).replace(',', '.'))
@@ -289,110 +305,104 @@ def get_detailed_status(val, master_row, marker_name):
 
         clean_name = smart_clean(marker_name)
         if "VITAMIN D" in clean_name and o_min == 0: o_min = 50.0
-        
         unit = str(master_row['Unit']) if pd.notna(master_row['Unit']) else ""
         rng_str = f"{s_min} - {s_max} {unit}"
 
-        # 1. Red
         if s_min > 0 and val < s_min: return "OUT OF RANGE", "#F87171", "c-red", rng_str, 1
         if s_max > 0 and val > s_max: return "OUT OF RANGE", "#F87171", "c-red", rng_str, 1
         
-        # 2. Orange
-        higher_is_better = ["VITAMIND", "VITAMIN D", "DHEA", "TESTOSTERONE", "MAGNESIUM", "B12", "FOLATE", "HDL", "FERRITIN"]
-        if any(x in clean_name for x in higher_is_better):
-            if o_min > 0 and val < o_min: return "BORDERLINE", "#FBBF24", "c-orange", rng_str, 2
-        
-        if "HDL" in clean_name and "NON" not in clean_name and val < 1.4:
-            return "BORDERLINE", "#FBBF24", "c-orange", rng_str, 2
-            
-        range_span = s_max - s_min
-        buffer = range_span * 0.025 if range_span > 0 else 0
-        if buffer > 0:
-            if val < (s_min + buffer): return "BORDERLINE", "#FBBF24", "c-orange", rng_str, 2
-            if val > (s_max - buffer): return "BORDERLINE", "#FBBF24", "c-orange", rng_str, 2
-
-        # 3. Blue
         has_optimal = (o_min > 0 or o_max > 0)
         check_min = o_min if o_min > 0 else s_min
         check_max = o_max if o_max > 0 else s_max
         if has_optimal and val >= check_min and val <= check_max: return "OPTIMAL", "#22D3EE", "c-blue", rng_str, 3
-        
-        # 4. Green
         return "IN RANGE", "#34D399", "c-green", rng_str, 4
     except: return "ERROR", "#71717A", "c-grey", "Error", 5
 
-# --- 6. VISUALIZATION ENGINE (Robust & Intuitive) ---
+# --- 6. CINEMATIC CHART ENGINE (ALTAIR GLOW) ---
 def plot_clinical_trend(marker_name, results_df, events_df, master_df):
-    # Filter and sort
-    chart_data = results_df[results_df['Marker'] == marker_name].copy()
-    chart_data = chart_data.dropna(subset=['NumericValue']).sort_values('Date')
+    # 1. Filter Data (Robust)
+    # Using strict string matching or relaxed? Let's use clean matching
+    clean_target = smart_clean(marker_name)
     
-    if chart_data.empty: return None
+    # Create a temp column for matching
+    results_df['MatchKey'] = results_df['Marker'].apply(smart_clean)
+    chart_data = results_df[results_df['MatchKey'] == clean_target].copy()
+    
+    # Drop invalid values
+    chart_data = chart_data.dropna(subset=['NumericValue', 'Date']).sort_values('Date')
+    
+    # DEBUG: IF EMPTY, RETURN DIAGNOSTIC
+    if chart_data.empty:
+        return "EMPTY"
 
-    # Get Range
+    # 2. Get Range
     min_val, max_val = 0, 0
     master_row = fuzzy_match(marker_name, master_df)
     if master_row is not None:
         min_val, max_val = parse_range(master_row['Standard Range'])
 
-    # 1. Base
+    # 3. Dynamic Color (Ferritin Style)
+    # Pick color based on marker name hash to give variety
+    colors = ['#38BDF8', '#818CF8', '#34D399', '#F472B6']
+    color_idx = len(marker_name) % len(colors)
+    theme_color = colors[color_idx]
+
+    # 4. Base Chart
     base = alt.Chart(chart_data).encode(
         x=alt.X('Date:T', title=None, axis=alt.Axis(
-            format='%d %b %y', 
-            labelColor='#71717A', 
-            labelFont='JetBrains Mono',
-            tickColor='#27272A', 
-            domain=False, 
-            grid=False
-        )),
-        y=alt.Y('NumericValue:Q', title=None, scale=alt.Scale(zero=False, padding=20), axis=alt.Axis(
+            format='%b %Y', 
             labelColor='#71717A', 
             labelFont='JetBrains Mono',
             tickColor='#27272A', 
             domain=False, 
             gridColor='#27272A',
-            gridOpacity=0.5
+            gridOpacity=0.2
+        )),
+        y=alt.Y('NumericValue:Q', title=None, scale=alt.Scale(zero=False, padding=25), axis=alt.Axis(
+            labelColor='#71717A', 
+            labelFont='JetBrains Mono',
+            tickColor='#27272A', 
+            domain=False, 
+            gridColor='#27272A',
+            gridOpacity=0.2
         ))
     )
 
-    # 2. Reference Band
-    bands = alt.Chart(pd.DataFrame({'y': [min_val], 'y2': [max_val]})).mark_rect(
-        color='#22C55E', opacity=0.08
-    ).encode(y='y', y2='y2') if max_val > 0 else None
-
-    # 3. Gradient Area
-    area = base.mark_area(
-        line={'color': '#38BDF8'},
-        color=alt.Gradient(
-            gradient='linear',
-            stops=[alt.GradientStop(color='#38BDF8', offset=0), alt.GradientStop(color='rgba(56, 189, 248, 0)', offset=1)],
-            x1=1, x2=1, y1=1, y2=0
-        ),
-        opacity=0.3
-    )
-
-    # 4. Line
-    line = base.mark_line(
-        color='#38BDF8', 
-        strokeWidth=3,
+    # 5. GLOW LAYER (Thick, blurred line behind)
+    glow = base.mark_line(
+        color=theme_color, 
+        strokeWidth=8, 
+        opacity=0.2, 
         interpolate='monotone'
     )
 
-    # 5. Interactive
-    nearest = alt.selection(type='single', nearest=True, on='mouseover', fields=['Date'], empty='none')
-    
-    # 6. Points (Visible on Hover)
-    points = base.mark_circle(size=80, fill='#09090B', stroke='#38BDF8', strokeWidth=2).encode(
-        opacity=alt.condition(nearest, alt.value(1), alt.value(0))
+    # 6. CORE LAYER (Sharp line)
+    line = base.mark_line(
+        color=theme_color, 
+        strokeWidth=3, 
+        interpolate='monotone'
     )
 
-    # 7. Crosshair
-    rule = base.mark_rule(color='#52525B', strokeDash=[4,4]).encode(
+    # 7. GRADIENT FILL
+    area = base.mark_area(
+        line=False,
+        color=alt.Gradient(
+            gradient='linear',
+            stops=[alt.GradientStop(color=theme_color, offset=0), alt.GradientStop(color='rgba(0,0,0,0)', offset=1)],
+            x1=1, x2=1, y1=1, y2=0
+        ),
+        opacity=0.15,
+        interpolate='monotone'
+    )
+
+    # 8. Interactive Points (Only on hover)
+    nearest = alt.selection(type='single', nearest=True, on='mouseover', fields=['Date'], empty='none')
+    points = base.mark_circle(size=80, fill='#000000', stroke=theme_color, strokeWidth=2).encode(
         opacity=alt.condition(nearest, alt.value(1), alt.value(0))
     ).add_selection(nearest)
 
-    # 8. Tooltips
-    tooltip_points = base.mark_circle(opacity=0).encode(
+    # 9. Tooltips
+    tooltips = base.mark_circle(opacity=0).encode(
         tooltip=[
             alt.Tooltip('Date:T', format='%d %b %Y'),
             alt.Tooltip('NumericValue:Q', title=marker_name),
@@ -400,30 +410,29 @@ def plot_clinical_trend(marker_name, results_df, events_df, master_df):
         ]
     ).add_selection(nearest)
 
-    # 9. Events
+    # 10. Events
     event_layer = None
     if not events_df.empty:
+        # Snap events to data (optional, just draw lines for now)
         ev_rule = alt.Chart(events_df).mark_rule(
-            color='#6366F1', strokeWidth=1, opacity=0.8
+            color='#E4E4E7', strokeWidth=1, opacity=0.3, strokeDash=[4,4]
         ).encode(x='Date:T')
         
-        ev_circle = alt.Chart(events_df).mark_circle(
-            color='#09090B', stroke='#6366F1', strokeWidth=2, size=100
-        ).encode(x='Date:T', y=alt.value(20))
+        ev_bubble = alt.Chart(events_df).mark_point(
+            filled=True, fill='#09090B', stroke='#E4E4E7', size=500, shape='rect'
+        ).encode(x='Date:T', y=alt.value(20)) # Top
 
         ev_text = alt.Chart(events_df).mark_text(
-            align='center', baseline='bottom', dy=-15,
-            color='#E4E4E7', font='JetBrains Mono', fontSize=10, fontWeight=600
+            align='center', baseline='middle',
+            color='#E4E4E7', font='JetBrains Mono', fontSize=10
         ).encode(x='Date:T', y=alt.value(20), text='Event')
         
-        event_layer = ev_rule + ev_circle + ev_text
+        event_layer = ev_rule + ev_bubble + ev_text
 
-    # Assemble
-    final_chart = area + line + points + rule + tooltip_points
-    if bands: final_chart = bands + final_chart
-    if event_layer: final_chart = final_chart + event_layer
-
-    return final_chart.properties(height=320, background='transparent').configure_view(strokeWidth=0)
+    final = glow + area + line + points + tooltips
+    if event_layer: final = final + event_layer
+    
+    return final.properties(height=320, background='transparent').configure_view(strokeWidth=0)
 
 # --- 7. MAIN APP ---
 master_df, results_df, events_df, status = load_data()
@@ -440,7 +449,7 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# TOP NAVIGATION (HARDCODED CAPS FORCED)
+# TOP NAVIGATION (CAPS FORCED)
 mode = st.radio("Navigation", ["DASHBOARD", "TREND ANALYSIS", "PROTOCOL LOG", "DATA TOOLS"], horizontal=True, label_visibility="collapsed")
 
 # MODE 1: DASHBOARD
@@ -524,6 +533,7 @@ elif mode == "TREND ANALYSIS":
     st.markdown('<div class="section-header">Longitudinal Analysis</div>', unsafe_allow_html=True)
     if results_df.empty: st.warning("No Data."); st.stop()
     
+    # Clean markers for selection
     markers = sorted(results_df['Marker'].unique())
     defaults = [m for m in ["Total Testosterone", "Haematocrit", "Oestradiol"] if m in markers]
     selected_markers = st.multiselect("Select Biomarkers:", markers, default=defaults)
@@ -531,7 +541,12 @@ elif mode == "TREND ANALYSIS":
     for m in selected_markers:
         st.markdown(f"#### {m}")
         chart = plot_clinical_trend(m, results_df, events_df, master_df)
-        if chart: st.altair_chart(chart, use_container_width=True)
+        if chart == "EMPTY":
+            st.error(f"No numeric data found for {m}. Check the data format.")
+            with st.expander("Diagnostic Data"):
+                st.write(results_df[results_df['Marker']==m])
+        elif chart: 
+            st.altair_chart(chart, use_container_width=True)
         st.markdown("<br>", unsafe_allow_html=True)
 
 # MODE 3: PROTOCOL
