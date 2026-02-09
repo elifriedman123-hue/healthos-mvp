@@ -57,7 +57,7 @@ st.markdown("""
         font-size: 12px;
         margin: 0;
         color: #71717A; 
-        text-transform: uppercase; 
+        text-transform: uppercase !important; 
         letter-spacing: 1px; /* THE WIDE SPACING */
         white-space: nowrap;
     }
@@ -397,11 +397,12 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# TOP NAVIGATION (CAPS + MONO FONT)
-mode = st.radio("Navigation", ["Dashboard", "Trend Analysis", "Protocol Log", "Data Tools"], horizontal=True, label_visibility="collapsed")
+# TOP NAVIGATION (HARDCODED CAPS FORCED)
+# We now use explicit CAPS strings here to force the UI to match
+mode = st.radio("Navigation", ["DASHBOARD", "TREND ANALYSIS", "PROTOCOL LOG", "DATA TOOLS"], horizontal=True, label_visibility="collapsed")
 
 # MODE 1: DASHBOARD
-if mode == "Dashboard":
+if mode == "DASHBOARD":
     if results_df.empty: 
         st.info("No Data Loaded. Go to 'Data Tools' to upload."); st.stop()
     
@@ -479,7 +480,7 @@ if mode == "Dashboard":
             </div>""", unsafe_allow_html=True)
 
 # MODE 2: TRENDS
-elif mode == "Trend Analysis":
+elif mode == "TREND ANALYSIS":
     st.markdown('<div class="section-header">Longitudinal Analysis</div>', unsafe_allow_html=True)
     if results_df.empty: st.warning("No Data."); st.stop()
     
@@ -494,7 +495,7 @@ elif mode == "Trend Analysis":
         st.markdown("<br>", unsafe_allow_html=True)
 
 # MODE 3: PROTOCOL
-elif mode == "Protocol Log":
+elif mode == "PROTOCOL LOG":
     st.markdown('<div class="section-header">Intervention Log</div>', unsafe_allow_html=True)
     with st.form("event_form"):
         c1, c2, c3 = st.columns([1, 2, 1])
@@ -510,7 +511,7 @@ elif mode == "Protocol Log":
         st.dataframe(events_df, use_container_width=True, height=300)
 
 # MODE 4: INGESTION
-elif mode == "Data Tools":
+elif mode == "DATA TOOLS":
     st.markdown('<div class="section-header">Data Pipeline</div>', unsafe_allow_html=True)
     up_file = st.file_uploader("Upload CSV", type=['csv'])
     if up_file and st.button("Process Batch"):
