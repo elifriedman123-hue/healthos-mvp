@@ -9,34 +9,81 @@ import re
 from difflib import SequenceMatcher
 
 # --- 1. CONFIGURATION ---
-st.set_page_config(page_title="HealthOS Clinical", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(
+    page_title="HealthOS Pro", 
+    layout="wide", 
+    initial_sidebar_state="collapsed" # Collapsed for full immersion
+)
 
-# --- 2. STYLING ---
+# --- 2. NEXT-GEN UI STYLING (HUD DESIGN) ---
 st.markdown("""
     <style>
-    /* Global Reset */
-    [data-testid="stAppViewContainer"] { background-color: #000000; color: #F5F5F7; }
-    [data-testid="stSidebar"] { background-color: #1C1C1E; border-right: 1px solid #2C2C2E; }
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap');
+
+    /* BASE THEME */
+    [data-testid="stAppViewContainer"] { background-color: #09090B; color: #E4E4E7; font-family: 'Inter', sans-serif; }
+    [data-testid="stSidebar"] { background-color: #121214; border-right: 1px solid #27272A; }
     
-    /* Card Design */
-    .glass-card { 
-        background: rgba(28, 28, 30, 0.6); 
-        backdrop-filter: blur(20px); 
-        border: 1px solid rgba(255,255,255,0.1); 
-        border-radius: 20px; 
-        padding: 20px; 
-        margin-bottom: 10px; 
-        box-shadow: 0 4px 24px rgba(0,0,0,0.2); 
+    /* REMOVE CLUTTER */
+    [data-testid="stHeader"] { display: none; }
+    .block-container { padding-top: 2rem; padding-bottom: 5rem; }
+
+    /* HUD METRIC CARD */
+    .hud-card {
+        background: linear-gradient(145deg, rgba(39, 39, 42, 0.4) 0%, rgba(24, 24, 27, 0.4) 100%);
+        backdrop-filter: blur(20px);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 16px;
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        transition: transform 0.2s;
     }
-    .marker-title { margin: 0; font-size: 16px; font-weight: 600; color: white; }
-    .marker-value { margin: 0; font-size: 24px; font-weight: 700; }
-    .marker-sub { margin-top: 4px; font-size: 11px; color: #8E8E93; text-transform: uppercase; letter-spacing: 0.5px; }
+    .hud-card:hover { border-color: rgba(255, 255, 255, 0.2); }
+    .hud-val { font-family: 'JetBrains Mono', monospace; font-size: 28px; font-weight: 700; color: #FAFAFA; letter-spacing: -1px; }
+    .hud-label { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #A1A1AA; margin-top: 4px; font-weight: 600; }
+
+    /* CLINICAL LIST CARD */
+    .clinical-row {
+        background: rgba(255, 255, 255, 0.03);
+        border-left: 4px solid #333;
+        padding: 16px 20px;
+        margin-bottom: 8px;
+        border-radius: 4px 12px 12px 4px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        transition: background 0.2s;
+    }
+    .clinical-row:hover { background: rgba(255, 255, 255, 0.06); }
     
-    /* Stat Grid */
-    .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 10px; margin-bottom: 20px; }
-    .stat-box { text-align: center; padding: 15px 5px; border-radius: 16px; background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255,255,255,0.05); }
-    .stat-num { font-size: 24px; font-weight: 700; margin: 0; color: white; }
-    .stat-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 4px; opacity: 0.7; color: white; }
+    .c-marker { font-weight: 600; font-size: 15px; color: #F4F4F5; }
+    .c-sub { font-size: 11px; color: #71717A; margin-top: 2px; }
+    .c-value { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 18px; }
+    
+    /* SECTION HEADERS */
+    .section-header {
+        font-size: 12px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 1.5px;
+        color: #52525B;
+        margin-bottom: 15px;
+        border-bottom: 1px solid #27272A;
+        padding-bottom: 5px;
+    }
+
+    /* GRID LAYOUT */
+    .hud-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+        gap: 12px;
+        margin-bottom: 30px;
+    }
+
+    /* UTILITIES */
+    .tag { padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; text-transform: uppercase; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -209,7 +256,7 @@ def get_detailed_status(val, master_row, marker_name):
         return "IN RANGE", "#34C759", "c-green", rng_str, 4
     except: return "ERROR", "#8E8E93", "c-grey", "Error", 5
 
-# --- VISUALIZATION ENGINE (UPGRADED) ---
+# --- VISUALIZATION ENGINE (PRO UPGRADE) ---
 def plot_clinical_trend(marker_name, results_df, events_df, master_df):
     chart_data = results_df[results_df['Marker'] == marker_name].copy()
     if chart_data.empty: return None
@@ -222,8 +269,8 @@ def plot_clinical_trend(marker_name, results_df, events_df, master_df):
 
     # 1. Base Layer (The Data)
     base = alt.Chart(chart_data).encode(
-        x=alt.X('Date:T', title=None, axis=alt.Axis(format='%d %b %Y', labelColor='#8E8E93', tickColor='#2C2C2E', domain=False)),
-        y=alt.Y('NumericValue:Q', title=None, scale=alt.Scale(zero=False, padding=20), axis=alt.Axis(labelColor='#8E8E93', tickColor='#2C2C2E', domain=False)),
+        x=alt.X('Date:T', title=None, axis=alt.Axis(format='%b %Y', labelColor='#71717A', tickColor='#27272A', domain=False, gridColor='#27272A')),
+        y=alt.Y('NumericValue:Q', title=None, scale=alt.Scale(zero=False, padding=20), axis=alt.Axis(labelColor='#71717A', tickColor='#27272A', domain=False, gridColor='#27272A')),
         tooltip=[
             alt.Tooltip('Date:T', format='%d %b %Y'),
             alt.Tooltip('NumericValue:Q', title=marker_name),
@@ -231,88 +278,86 @@ def plot_clinical_trend(marker_name, results_df, events_df, master_df):
         ]
     )
 
-    # 2. Reference Band (The "Safety Corridor")
+    # 2. Reference Band (Safety Corridor)
     bands = alt.Chart(pd.DataFrame({'y': [min_val], 'y2': [max_val]})).mark_rect(
-        color='#34C759', opacity=0.1
+        color='#10B981', opacity=0.08  # Medical Green
     ).encode(y='y', y2='y2') if max_val > 0 else None
 
-    # 3. Gradient Area (The "Modern Look")
+    # 3. Gradient Area (The "Glow")
     area = base.mark_area(
-        line={'color': '#007AFF'},
+        line={'color': '#3B82F6'}, # Electric Blue
         color=alt.Gradient(
             gradient='linear',
-            stops=[alt.GradientStop(color='#007AFF', offset=0), alt.GradientStop(color='rgba(0, 122, 255, 0)', offset=1)],
+            stops=[alt.GradientStop(color='#3B82F6', offset=0), alt.GradientStop(color='rgba(59, 130, 246, 0)', offset=1)],
             x1=1, x2=1, y1=1, y2=0
         ),
-        interpolate='monotone',
-        opacity=0.3
+        opacity=0.4
     )
 
-    # 4. The Line (Thick & Smooth)
-    line = base.mark_line(
-        color='#007AFF', 
-        strokeWidth=3, 
-        interpolate='monotone'
-    )
+    # 4. The Line
+    line = base.mark_line(color='#3B82F6', strokeWidth=3)
 
-    # 5. The Points (Interactive White Dots)
-    points = base.mark_circle(
-        size=80, 
-        fill='white', 
-        stroke='#007AFF', 
-        strokeWidth=2, 
-        opacity=1
-    )
+    # 5. Interactive Points
+    points = base.mark_circle(size=80, fill='#18181B', stroke='#3B82F6', strokeWidth=2)
 
-    # 6. Events (Interventions)
+    # 6. Crosshair Selection
+    nearest = alt.selection(type='single', nearest=True, on='mouseover', fields=['Date'], empty='none')
+    rules = base.mark_rule(color='#52525B', strokeWidth=1).encode(
+        opacity=alt.condition(nearest, alt.value(1), alt.value(0))
+    ).add_selection(nearest)
+
+    # 7. Events (Interventions)
     event_layer = None
     if not events_df.empty:
-        # Vertical Rule
-        rules = alt.Chart(events_df).mark_rule(
-            color='#FF3B30', 
-            strokeWidth=1.5, 
-            strokeDash=[4,4]
-        ).encode(
-            x='Date:T', 
-            tooltip=['Event', 'Notes']
-        )
+        ev_rule = alt.Chart(events_df).mark_rule(
+            color='#F43F5E', strokeWidth=1.5, strokeDash=[4,4]
+        ).encode(x='Date:T', tooltip=['Event', 'Notes'])
         
-        # Text Label (Rotated & Styled)
-        text = alt.Chart(events_df).mark_text(
-            align='left', 
-            baseline='middle', 
-            dx=7, 
-            dy=-100,
-            color='#FF3B30', 
-            angle=0,
-            fontSize=11,
-            fontWeight='bold'
-        ).encode(
-            x='Date:T', 
-            text='Event'
-        )
-        event_layer = rules + text
+        ev_text = alt.Chart(events_df).mark_text(
+            align='left', baseline='middle', dx=5, dy=-80,
+            color='#F43F5E', angle=0, fontSize=10, fontWeight=600
+        ).encode(x='Date:T', text='Event')
+        event_layer = ev_rule + ev_text
 
-    # Assemble Chart
-    final_chart = line + points + area
+    # Assemble
+    final_chart = line + points + area + rules
     if bands: final_chart = bands + final_chart
     if event_layer: final_chart = final_chart + event_layer
 
-    return final_chart.properties(height=350).configure_view(strokeWidth=0).interactive()
+    return final_chart.properties(height=320).configure_view(strokeWidth=0).interactive()
 
 # --- 6. MAIN APP ---
 master_df, results_df, events_df, status = load_data()
 
-st.sidebar.header("👨‍⚕️ Clinical OS")
-mode = st.sidebar.radio("Navigation", ["Patient Overview", "Trends (TRT View)", "Protocol Manager", "Data Ingestion"])
+# SIDEBAR NAV (Clean)
+st.sidebar.markdown("### ⚕️ Clinical OS")
+mode = st.sidebar.radio("Module", ["Patient Dashboard", "Longitudinal Trends", "Protocol Manager", "Data Ingestion"], label_visibility="collapsed")
 
-# MODE 1: PATIENT DASHBOARD
-if mode == "Patient Overview":
+# --- HEADER (Patient Context) ---
+# Hardcoded for demo, you can make this dynamic later
+st.markdown("""
+<div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #333; padding-bottom:10px; margin-bottom:20px;">
+    <div>
+        <h2 style="margin:0; font-family:'Inter'; letter-spacing:-1px;">Patient: J. Doe</h2>
+        <span style="font-size:12px; color:#71717A; text-transform:uppercase; letter-spacing:1px;">DOB: 12/05/1985 | ID: #88219</span>
+    </div>
+    <div style="text-align:right;">
+        <span class="tag" style="background:#262626; color:#A1A1AA; border:1px solid #3F3F46;">TRT Protocol: Active</span>
+        <span class="tag" style="background:#064E3B; color:#34D399; border:1px solid #059669; margin-left:8px;">Status: Optimized</span>
+    </div>
+</div>
+""", unsafe_allow_html=True)
+
+# MODE 1: DASHBOARD
+if mode == "Patient Dashboard":
     if results_df.empty: st.warning("No Data."); st.stop()
     
     unique_dates = sorted(results_df['Date'].dropna().unique(), reverse=True)
     date_options = [d.strftime('%Y-%m-%d') for d in unique_dates if pd.notna(d)]
-    selected_label = st.selectbox("Select Lab Report:", date_options)
+    
+    c_sel, _ = st.columns([1, 3])
+    with c_sel:
+        selected_label = st.selectbox("View Report:", date_options)
     
     snapshot = results_df[results_df['Date'].astype(str).str.startswith(selected_label)].copy()
     processed_rows, stats = [], {"Blue": 0, "Green": 0, "Orange": 0, "Red": 0}
@@ -333,86 +378,90 @@ if mode == "Patient Overview":
     df_display = pd.DataFrame(processed_rows)
     if df_display.empty: st.warning("No matched biomarkers."); st.stop()
 
-    # Metrics Grid
-    st.markdown("""<div class="stat-grid">""", unsafe_allow_html=True)
-    metrics = [
-        ("Total Tested", len(df_display), "white"), 
-        ("Optimal", stats['Blue'], "#007AFF"), 
-        ("Normal", stats['Green'], "#34C759"), 
-        ("Borderline", stats['Orange'], "#FF9500"), 
-        ("Abnormal", stats['Red'], "#FF3B30")
-    ]
-    grid_html = ""
-    for l, v, c in metrics:
-        grid_html += f"""<div class="stat-box"><div class="stat-num" style="color:{c};">{v}</div><div class="stat-label" style="color:{c};">{l}</div></div>"""
-    st.markdown(grid_html + "</div>", unsafe_allow_html=True)
+    # HUD GRID
+    st.markdown("""<div class="hud-grid">""", unsafe_allow_html=True)
+    # Total Tested
+    st.markdown(f"""<div class="hud-card"><div class="hud-val" style="color:#FAFAFA">{len(df_display)}</div><div class="hud-label">Total Tested</div></div>""", unsafe_allow_html=True)
+    # Optimal
+    st.markdown(f"""<div class="hud-card"><div class="hud-val" style="color:#3B82F6">{stats['Blue']}</div><div class="hud-label">Optimal</div></div>""", unsafe_allow_html=True)
+    # Normal
+    st.markdown(f"""<div class="hud-card"><div class="hud-val" style="color:#10B981">{stats['Green']}</div><div class="hud-label">Normal</div></div>""", unsafe_allow_html=True)
+    # Border
+    st.markdown(f"""<div class="hud-card"><div class="hud-val" style="color:#F59E0B">{stats['Orange']}</div><div class="hud-label">Borderline</div></div>""", unsafe_allow_html=True)
+    # Abnormal
+    st.markdown(f"""<div class="hud-card"><div class="hud-val" style="color:#EF4444">{stats['Red']}</div><div class="hud-label">Abnormal</div></div>""", unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
     
-    st.divider()
-    
+    # LISTS
     c_warn, c_good = st.columns(2)
+    
     with c_warn:
-        st.subheader("⚠️ Attention")
+        st.markdown('<div class="section-header">Attention Required</div>', unsafe_allow_html=True)
         bad_df = df_display[df_display['Priority'].isin([1, 2])].sort_values('Priority', ascending=True)
-        if bad_df.empty: st.markdown("✅ No Issues")
+        if bad_df.empty: st.caption("No markers flagged.")
         for _, r in bad_df.iterrows():
             st.markdown(f"""
-            <div class="glass-card" style="border-left:4px solid {r['Color']}">
-                <div class="marker-title">{r['Marker']}</div>
-                <div class="marker-sub" style="color:{r['Color']}">{r['Status']} (Range: {r['Range']})</div>
-                <div class="marker-value" style="color:{r['Color']}; text-align:right">{r['Value']}</div>
+            <div class="clinical-row" style="border-left-color: {r['Color']}">
+                <div>
+                    <div class="c-marker">{r['Marker']}</div>
+                    <div class="c-sub" style="color:{r['Color']}">{r['Status']} • Range: {r['Range']}</div>
+                </div>
+                <div class="c-value" style="color:{r['Color']}">{r['Value']}</div>
             </div>""", unsafe_allow_html=True)
 
     with c_good:
-        st.subheader("✅ Optimized")
+        st.markdown('<div class="section-header">Optimized Markers</div>', unsafe_allow_html=True)
         good_df = df_display[df_display['Priority'].isin([3, 4])].sort_values('Priority', ascending=True)
         for _, r in good_df.iterrows():
             st.markdown(f"""
-            <div class="glass-card" style="border-left:4px solid {r['Color']}">
-                <div class="marker-title">{r['Marker']}</div>
-                <div class="marker-sub" style="color:{r['Color']}">{r['Status']}</div>
-                <div class="marker-value" style="color:{r['Color']}; text-align:right">{r['Value']}</div>
+            <div class="clinical-row" style="border-left-color: {r['Color']}">
+                <div>
+                    <div class="c-marker">{r['Marker']}</div>
+                    <div class="c-sub">{r['Status']}</div>
+                </div>
+                <div class="c-value" style="color:{r['Color']}">{r['Value']}</div>
             </div>""", unsafe_allow_html=True)
 
-# MODE 2: THE "TRT" TRENDS
-elif mode == "Trends (TRT View)":
+# MODE 2: TRENDS
+elif mode == "Longitudinal Trends":
+    st.markdown('<div class="section-header">Trend Analysis</div>', unsafe_allow_html=True)
     if results_df.empty: st.warning("No Data."); st.stop()
-    st.title("📈 Longitudinal Analysis")
     
     markers = sorted(results_df['Marker'].unique())
     defaults = [m for m in ["Total Testosterone", "Haematocrit", "Oestradiol"] if m in markers]
     selected_markers = st.multiselect("Select Biomarkers:", markers, default=defaults)
     
     for m in selected_markers:
-        st.markdown(f"### {m}")
-        # PASSING MASTER_DF FOR RANGES NOW
+        st.markdown(f"#### {m}")
         chart = plot_clinical_trend(m, results_df, events_df, master_df)
         if chart: st.altair_chart(chart, use_container_width=True)
-        st.divider()
+        st.markdown("<br>", unsafe_allow_html=True)
 
-# MODE 3: PROTOCOL MANAGER
+# MODE 3: PROTOCOL
 elif mode == "Protocol Manager":
-    st.title("⚡ Intervention Timeline")
+    st.markdown('<div class="section-header">Intervention Log</div>', unsafe_allow_html=True)
     with st.form("event_form"):
         c1, c2, c3 = st.columns([1, 2, 1])
         with c1: e_date = st.date_input("Date")
-        with c2: e_name = st.text_input("Intervention")
+        with c2: e_name = st.text_input("Intervention (e.g., '100mg Test C')")
         with c3: e_type = st.selectbox("Type", ["Medication", "Lifestyle", "Procedure"])
         e_note = st.text_area("Clinical Notes")
-        if st.form_submit_button("Add to Timeline"):
+        if st.form_submit_button("Log Event"):
             add_clinical_event(e_date, e_name, e_type, e_note)
             st.success("Event Logged"); st.rerun()
 
-    if not events_df.empty: st.dataframe(events_df, use_container_width=True)
+    if not events_df.empty: 
+        st.dataframe(events_df, use_container_width=True, height=300)
 
-# MODE 4: DATA INGESTION
+# MODE 4: INGESTION
 elif mode == "Data Ingestion":
-    st.title("📂 Data Ingestion")
-    up_file = st.file_uploader("Upload Lab CSV", type=['csv'])
+    st.markdown('<div class="section-header">Data Pipeline</div>', unsafe_allow_html=True)
+    up_file = st.file_uploader("Upload CSV", type=['csv'])
     if up_file and st.button("Process Batch"):
         msg = process_csv_upload(up_file)
-        if msg == "Success": st.success("Data Ingested"); st.rerun()
+        if msg == "Success": st.success("Ingestion Complete"); st.rerun()
         else: st.error(msg)
             
-    if st.button("⚠️ CLEAR ALL DATA"):
+    if st.button("⚠️ CLEAR ALL RECORDS"):
         clear_data()
         st.warning("Database Wiped."); st.rerun()
