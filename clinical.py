@@ -3,10 +3,10 @@ import pandas as pd
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import json
-import altair as alt
 import os
 import re
 from difflib import SequenceMatcher
+from streamlit_echarts import st_echarts # THE NEW CINEMATIC ENGINE
 
 # --- 1. CONFIGURATION ---
 st.set_page_config(
@@ -63,7 +63,6 @@ st.markdown("""
     }
     
     div[role="radiogroup"] label:hover { background-color: #18181B; cursor: pointer; }
-    
     div[role="radiogroup"] label[data-checked="true"] {
         background-color: #18181B;
         border: 1px solid #27272A;
@@ -242,7 +241,7 @@ def process_csv_upload(uploaded_file):
         return "Success"
     except Exception as e: return f"Error: {str(e)}"
 
-# --- 5. LOGIC & VISUALIZATION ---
+# --- 5. LOGIC ---
 def smart_clean(marker):
     return re.sub(r'^[SPBU]-\s*', '', str(marker).upper().replace("SERUM", "").replace("PLASMA", "").replace("BLOOD", "").replace("TOTAL", "").strip())
 
@@ -280,11 +279,9 @@ def get_detailed_status(val, master_row, marker_name):
         unit = str(master_row['Unit']) if pd.notna(master_row['Unit']) else ""
         rng_str = f"{s_min} - {s_max} {unit}"
 
-        # 1. Red (Out of Range)
         if s_min > 0 and val < s_min: return "OUT OF RANGE", "#F87171", "c-red", rng_str, 1
         if s_max > 0 and val > s_max: return "OUT OF RANGE", "#F87171", "c-red", rng_str, 1
         
-        # 2. Orange (Borderline)
         higher_is_better = ["VITAMIND", "VITAMIN D", "DHEA", "TESTOSTERONE", "MAGNESIUM", "B12", "FOLATE", "HDL", "FERRITIN"]
         if any(x in clean_name for x in higher_is_better):
             if o_min > 0 and val < o_min: return "BORDERLINE", "#FBBF24", "c-orange", rng_str, 2
@@ -298,122 +295,138 @@ def get_detailed_status(val, master_row, marker_name):
             if val < (s_min + buffer): return "BORDERLINE", "#FBBF24", "c-orange", rng_str, 2
             if val > (s_max - buffer): return "BORDERLINE", "#FBBF24", "c-orange", rng_str, 2
 
-        # 3. Blue (Optimal)
         has_optimal = (o_min > 0 or o_max > 0)
         check_min = o_min if o_min > 0 else s_min
         check_max = o_max if o_max > 0 else s_max
         if has_optimal and val >= check_min and val <= check_max: return "OPTIMAL", "#22D3EE", "c-blue", rng_str, 3
         
-        # 4. Green (Normal)
         return "IN RANGE", "#34D399", "c-green", rng_str, 4
     except: return "ERROR", "#71717A", "c-grey", "Error", 5
 
-# --- VISUALIZATION ENGINE (CINEMATIC UPGRADE) ---
-def plot_clinical_trend(marker_name, results_df, events_df, master_df):
-    chart_data = results_df[results_df['Marker'] == marker_name].copy()
-    if chart_data.empty: return None
+# --- 6. THE CINEMATIC CHART ENGINE (ECHARTS) ---
+def render_cinematic_chart(marker_name, results_df, events_df, master_df):
+    chart_data = results_df[results_df['Marker'] == marker_name].sort_values('Date').copy()
+    if chart_data.empty: return
 
-    # Get Range for Reference Band
+    # Prepare Data for ECharts
+    dates = chart_data['Date'].dt.strftime('%Y-%m-%d').tolist()
+    values = chart_data['NumericValue'].tolist()
+    
+    # Get Range
     min_val, max_val = 0, 0
     master_row = fuzzy_match(marker_name, master_df)
     if master_row is not None:
         min_val, max_val = parse_range(master_row['Standard Range'])
 
-    # Determine "Optimal" Zone color
-    color_scheme = "#22D3EE" # Cyan/Electric Blue default
-
-    # 1. Base Layer
-    base = alt.Chart(chart_data).encode(
-        x=alt.X('Date:T', title=None, axis=alt.Axis(
-            format='%b %y', 
-            labelColor='#52525B', 
-            tickColor='#27272A', 
-            domain=False, 
-            gridColor='#18181B',
-            labelFont='JetBrains Mono'
-        )),
-        y=alt.Y('NumericValue:Q', title=None, scale=alt.Scale(zero=False, padding=25), axis=alt.Axis(
-            labelColor='#52525B', 
-            tickColor='#27272A', 
-            domain=False, 
-            gridColor='#18181B',
-            labelFont='JetBrains Mono'
-        )),
-        tooltip=[
-            alt.Tooltip('Date:T', format='%d %b %Y'),
-            alt.Tooltip('NumericValue:Q', title=marker_name),
-            alt.Tooltip('Source')
+    # Build MarkLines (The "Reference Corridor")
+    mark_area_data = []
+    if max_val > 0:
+        mark_area_data = [
+            [{"yAxis": min_val, "itemStyle": {"color": "rgba(34, 197, 94, 0.05)"}}, {"yAxis": max_val}]
         ]
-    )
 
-    # 2. Reference Band (Subtle Organic Flow)
-    bands = alt.Chart(pd.DataFrame({'y': [min_val], 'y2': [max_val]})).mark_rect(
-        color='white', opacity=0.03, cornerRadius=0
-    ).encode(y='y', y2='y2') if max_val > 0 else None
-
-    # 3. GLOW EFFECT (Thick blurred line behind)
-    glow = base.mark_line(
-        color=color_scheme, strokeWidth=8, opacity=0.15, interpolate='monotone'
-    )
-
-    # 4. MAIN LINE (Sharp)
-    line = base.mark_line(
-        stroke=color_scheme, strokeWidth=3, interpolate='monotone'
-    )
-
-    # 5. GRADIENT FILL (Fade to transparent)
-    area = base.mark_area(
-        line=False,
-        color=alt.Gradient(
-            gradient='linear',
-            stops=[alt.GradientStop(color=color_scheme, offset=0), alt.GradientStop(color='rgba(0,0,0,0)', offset=1)],
-            x1=1, x2=1, y1=1, y2=0
-        ),
-        opacity=0.15,
-        interpolate='monotone'
-    )
-
-    # 6. POINTS (White Halo)
-    points = base.mark_circle(
-        size=60, fill='#09090B', stroke='white', strokeWidth=2, opacity=1
-    )
-
-    # 7. INTERACTIVE CROSSHAIR
-    nearest = alt.selection(type='single', nearest=True, on='mouseover', fields=['Date'], empty='none')
-    rules = base.mark_rule(color='#52525B', strokeWidth=1, strokeDash=[2,2]).encode(
-        opacity=alt.condition(nearest, alt.value(1), alt.value(0))
-    ).add_selection(nearest)
-
-    # 8. EVENTS (LOLLIPOP STYLE)
-    event_layer = None
+    # Build Events (The "Lollipop" Pins)
+    mark_line_data = []
     if not events_df.empty:
-        # The Stick
-        ev_rule = alt.Chart(events_df).mark_rule(
-            color='#A1A1AA', strokeWidth=1, opacity=0.5
-        ).encode(x='Date:T')
-        
-        # The Bubble (Icon)
-        # We use a simple circle + text for the "Icon" effect
-        ev_point = alt.Chart(events_df).mark_circle(
-            size=200, color='#18181B', stroke='#A1A1AA', strokeWidth=1
-        ).encode(x='Date:T', y=alt.value(20)) # Fixed at top
+        for _, row in events_df.iterrows():
+            d_str = row['Date'].strftime('%Y-%m-%d')
+            label = row['Event']
+            # Add a vertical line for each event
+            mark_line_data.append({
+                "xAxis": d_str,
+                "label": {
+                    "formatter": f"{label}",
+                    "position": "end",
+                    "color": "#E4E4E7",
+                    "fontFamily": "JetBrains Mono",
+                    "fontSize": 10,
+                    "backgroundColor": "#18181B",
+                    "padding": [4, 8],
+                    "borderRadius": 4,
+                    "borderColor": "#3F3F46",
+                    "borderWidth": 1
+                },
+                "lineStyle": {"color": "#6366F1", "type": "solid", "width": 2} # Indigo color for events
+            })
 
-        # The Text Label
-        ev_text = alt.Chart(events_df).mark_text(
-            align='center', baseline='middle', dy=-15,
-            color='#E4E4E7', font='JetBrains Mono', fontSize=10, fontWeight='bold'
-        ).encode(x='Date:T', y=alt.value(20), text='Event')
-        
-        event_layer = ev_rule + ev_point + ev_text
+    # THE ECHARTS CONFIG (JSON)
+    option = {
+        "backgroundColor": "transparent",
+        "tooltip": {
+            "trigger": "axis",
+            "backgroundColor": "rgba(24, 24, 27, 0.9)",
+            "borderColor": "#3F3F46",
+            "textStyle": {"color": "#fff", "fontFamily": "Inter"},
+            "padding": 12
+        },
+        "grid": {"left": "2%", "right": "5%", "bottom": "15%", "top": "15%", "containLabel": True},
+        "xAxis": {
+            "type": "category",
+            "boundaryGap": False,
+            "data": dates,
+            "axisLine": {"show": False},
+            "axisTick": {"show": False},
+            "axisLabel": {"color": "#71717A", "fontFamily": "JetBrains Mono", "margin": 15}
+        },
+        "yAxis": {
+            "type": "value",
+            "splitLine": {"show": True, "lineStyle": {"color": "#27272A", "type": "dashed"}},
+            "axisLabel": {"color": "#52525B", "fontFamily": "JetBrains Mono"}
+        },
+        "dataZoom": [{
+            "type": "slider",
+            "show": True,
+            "backgroundColor": "#18181B",
+            "borderColor": "transparent",
+            "fillerColor": "rgba(56, 189, 248, 0.2)",
+            "handleStyle": {"color": "#38BDF8"},
+            "textStyle": {"color": "#71717A"},
+            "height": 20,
+            "bottom": 0
+        }],
+        "series": [
+            {
+                "name": marker_name,
+                "type": "line",
+                "smooth": 0.4, # THE CURVE
+                "symbol": "circle",
+                "symbolSize": 12,
+                "showSymbol": True,
+                "itemStyle": {"color": "#09090B", "borderColor": "#38BDF8", "borderWidth": 3},
+                "lineStyle": {
+                    "width": 4,
+                    "color": "#38BDF8", # Electric Blue
+                    "shadowColor": "rgba(56, 189, 248, 0.5)", # THE GLOW
+                    "shadowBlur": 15,
+                    "shadowOffsetY": 5
+                },
+                "areaStyle": {
+                    "color": {
+                        "type": "linear",
+                        "x": 0, "y": 0, "x2": 0, "y2": 1,
+                        "colorStops": [
+                            {"offset": 0, "color": "rgba(56, 189, 248, 0.4)"}, 
+                            {"offset": 1, "color": "rgba(56, 189, 248, 0)"}
+                        ]
+                    }
+                },
+                "data": values,
+                "markLine": {
+                    "symbol": ["none", "none"],
+                    "data": mark_line_data,
+                    "silent": True
+                },
+                "markArea": {
+                    "silent": True,
+                    "data": mark_area_data
+                }
+            }
+        ]
+    }
+    
+    st_echarts(options=option, height="400px")
 
-    # Assemble
-    final_chart = glow + area + line + points + rules
-    if bands: final_chart = bands + final_chart
-    if event_layer: final_chart = final_chart + event_layer
-
-    return final_chart.properties(height=350, background='transparent').configure_view(strokeWidth=0).interactive()
-
-# --- 6. MAIN APP ---
+# --- 7. MAIN APP ---
 master_df, results_df, events_df, status = load_data()
 
 # HEADER
@@ -428,7 +441,7 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# TOP NAVIGATION (HARDCODED CAPS FORCED)
+# TOP NAVIGATION
 mode = st.radio("Navigation", ["DASHBOARD", "TREND ANALYSIS", "PROTOCOL LOG", "DATA TOOLS"], horizontal=True, label_visibility="collapsed")
 
 # MODE 1: DASHBOARD
@@ -507,7 +520,7 @@ if mode == "DASHBOARD":
                 <div class="c-value" style="color:{r['Color']}">{r['Value']}</div>
             </div>""", unsafe_allow_html=True)
 
-# MODE 2: TRENDS
+# MODE 2: TRENDS (THE NEW CINEMATIC ENGINE)
 elif mode == "TREND ANALYSIS":
     st.markdown('<div class="section-header">Longitudinal Analysis</div>', unsafe_allow_html=True)
     if results_df.empty: st.warning("No Data."); st.stop()
@@ -518,8 +531,7 @@ elif mode == "TREND ANALYSIS":
     
     for m in selected_markers:
         st.markdown(f"#### {m}")
-        chart = plot_clinical_trend(m, results_df, events_df, master_df)
-        if chart: st.altair_chart(chart, use_container_width=True)
+        render_cinematic_chart(m, results_df, events_df, master_df)
         st.markdown("<br>", unsafe_allow_html=True)
 
 # MODE 3: PROTOCOL
