@@ -7,7 +7,6 @@ import altair as alt
 import os
 import re
 from difflib import SequenceMatcher
-from datetime import datetime
 
 # --- 1. CONFIGURATION ---
 st.set_page_config(
@@ -16,23 +15,23 @@ st.set_page_config(
     initial_sidebar_state="collapsed" 
 )
 
-# --- 2. CINEMATIC UI STYLING ---
+# --- 2. UI STYLING (The "Cool" Terminal Look) ---
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap');
 
-    /* GLOBAL RESET & DARK MODE */
-    [data-testid="stAppViewContainer"] { background-color: #000000; color: #E4E4E7; font-family: 'Inter', sans-serif; }
+    /* GLOBAL RESET */
+    [data-testid="stAppViewContainer"] { background-color: #09090B; color: #E4E4E7; font-family: 'Inter', sans-serif; }
     [data-testid="stHeader"] { display: none; }
-    .block-container { padding-top: 2rem; padding-bottom: 5rem; }
+    .block-container { padding-top: 1.5rem; padding-bottom: 5rem; }
 
-    /* NAVIGATION BAR */
+    /* --- NAVIGATION BAR --- */
     [data-testid="stRadio"] > label { display: none; }
     div[role="radiogroup"] {
         flex-direction: row;
-        background-color: #09090B;
+        background-color: #18181B;
         padding: 4px;
-        border-radius: 12px;
+        border-radius: 10px;
         border: 1px solid #27272A;
         width: 100%;
         overflow-x: auto;
@@ -44,7 +43,7 @@ st.markdown("""
         border: 1px solid transparent;
         border-radius: 8px;
         margin: 0 2px;
-        padding: 10px 16px;
+        padding: 8px 16px;
         text-align: center;
         transition: all 0.2s ease;
         justify-content: center;
@@ -54,25 +53,24 @@ st.markdown("""
     div[role="radiogroup"] label > div[data-testid="stMarkdownContainer"] > p {
         font-family: 'JetBrains Mono', monospace !important; 
         font-weight: 700;
-        font-size: 11px;
+        font-size: 12px;
         margin: 0;
-        color: #52525B; 
+        color: #71717A; 
         text-transform: uppercase !important; 
-        letter-spacing: 1.5px; 
+        letter-spacing: 1px;
         white-space: nowrap;
     }
     
-    div[role="radiogroup"] label:hover { background-color: #18181B; cursor: pointer; }
+    div[role="radiogroup"] label:hover { background-color: #27272A; cursor: pointer; }
     div[role="radiogroup"] label[data-checked="true"] {
-        background-color: #18181B;
+        background-color: #27272A;
         border: 1px solid #3F3F46;
-        box-shadow: 0 0 25px rgba(255, 255, 255, 0.05);
     }
     div[role="radiogroup"] label[data-checked="true"] > div[data-testid="stMarkdownContainer"] > p { color: #FAFAFA; }
 
-    /* DROPDOWN */
+    /* --- DROPDOWN --- */
     div[data-baseweb="select"] > div {
-        background-color: #09090B !important;
+        background-color: #18181B !important;
         border-color: #27272A !important;
         color: #FAFAFA !important;
         border-radius: 8px !important;
@@ -86,49 +84,50 @@ st.markdown("""
     }
     .stSelectbox label { display: none; }
 
-    /* CARDS & ROWS */
+    /* --- HUD CARD --- */
     .hud-card {
-        background: linear-gradient(180deg, rgba(24, 24, 27, 0.4) 0%, rgba(9, 9, 11, 0.4) 100%);
-        backdrop-filter: blur(10px);
-        border: 1px solid rgba(255, 255, 255, 0.05);
+        background: linear-gradient(145deg, rgba(39, 39, 42, 0.4) 0%, rgba(24, 24, 27, 0.4) 100%);
+        backdrop-filter: blur(20px);
+        border: 1px solid rgba(255, 255, 255, 0.08);
         border-radius: 16px;
         padding: 20px;
         display: flex;
         flex-direction: column;
         align-items: center;
     }
-    .hud-val { font-family: 'JetBrains Mono', monospace; font-size: 32px; font-weight: 700; color: #FAFAFA; letter-spacing: -1.5px; }
-    .hud-label { font-family: 'JetBrains Mono', monospace; font-size: 10px; text-transform: uppercase; letter-spacing: 1.5px; color: #52525B; margin-top: 8px; font-weight: 700; }
+    .hud-val { font-family: 'JetBrains Mono', monospace; font-size: 32px; font-weight: 700; color: #FAFAFA; letter-spacing: -1px; }
+    .hud-label { font-family: 'JetBrains Mono', monospace; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #A1A1AA; margin-top: 6px; font-weight: 700; }
 
+    /* --- CLINICAL ROW --- */
     .clinical-row {
-        background: rgba(15, 15, 17, 0.6);
-        border-left: 2px solid #333;
+        background: rgba(255, 255, 255, 0.03);
+        border-left: 4px solid #333;
         padding: 16px 20px;
         margin-bottom: 8px;
-        border-radius: 0px 8px 8px 0px;
+        border-radius: 4px 12px 12px 4px;
         display: flex;
         justify-content: space-between;
         align-items: center;
-        border: 1px solid rgba(255,255,255,0.02);
     }
-    .c-marker { font-family: 'Inter', sans-serif; font-weight: 500; font-size: 14px; color: #D4D4D8; letter-spacing: 0.2px; }
-    .c-sub { font-size: 11px; color: #52525B; margin-top: 4px; font-family: 'JetBrains Mono', monospace; }
-    .c-value { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 16px; }
+    .c-marker { font-family: 'Inter', sans-serif; font-weight: 600; font-size: 15px; color: #F4F4F5; }
+    .c-sub { font-size: 11px; color: #71717A; margin-top: 2px; }
+    .c-value { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 18px; }
     
+    /* HEADERS */
     .section-header {
         font-family: 'JetBrains Mono', monospace; 
-        font-size: 10px;
+        font-size: 11px;
         font-weight: 700;
         text-transform: uppercase;
-        letter-spacing: 2px;
-        color: #3F3F46;
-        margin-bottom: 20px;
-        border-bottom: 1px solid #18181B;
-        padding-bottom: 8px;
-        margin-top: 20px;
+        letter-spacing: 1px;
+        color: #52525B;
+        margin-bottom: 15px;
+        border-bottom: 1px solid #27272A;
+        padding-bottom: 5px;
+        margin-top: 10px;
     }
-    
-    div.stButton > button { width: 100%; border-radius: 8px; font-family: 'Inter', sans-serif; font-weight: 600; background: #18181B; border: 1px solid #27272A; color: #A1A1AA; }
+
+    div.stButton > button { width: 100%; border-radius: 8px; font-family: 'Inter', sans-serif; font-weight: 600; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -157,29 +156,16 @@ def get_google_sheet_client():
         except: return None
     else: return None
 
-# --- ROBUST PARSING FUNCTIONS ---
+# --- BASIC CLEANER (Restored to Simple Logic) ---
 def clean_numeric_value(val):
-    if pd.isna(val) or val == "": return None
-    s = str(val).strip().replace(',', '').replace(' ', '')
-    s = s.replace('µ', 'u').replace('ug/L', '').replace('ng/mL', '') # PSA fixes
-    s = s.replace('<', '').replace('>', '')
-    match = re.search(r"[-+]?\d*\.\d+|\d+", s)
-    if match:
-        try: return float(match.group())
-        except: return None
-    return None
-
-def parse_flexible_date(date_str):
-    if pd.isna(date_str) or date_str == "": return pd.NaT
-    # Try multiple formats
-    formats = ['%Y-%m-%d', '%d/%m/%Y', '%m/%d/%Y', '%d-%m-%Y', '%Y/%m/%d']
-    for fmt in formats:
-        try:
-            return pd.to_datetime(date_str, format=fmt)
-        except:
-            continue
-    # Fallback to standard parser
-    return pd.to_datetime(date_str, errors='coerce')
+    if pd.isna(val): return None
+    s = str(val).strip().replace(',', '')
+    # Basic PSA fix (remove units)
+    s = s.replace('µg/L', '').replace('ng/mL', '').replace('<', '').replace('>', '')
+    try:
+        return float(re.findall(r"[-+]?\d*\.\d+|\d+", s)[0])
+    except:
+        return None
 
 @st.cache_data(ttl=5)
 def load_data():
@@ -188,33 +174,28 @@ def load_data():
     try:
         sh = client.open(SHEET_NAME)
         
+        # Master
         try:
             ws_master = sh.worksheet("Master")
             m_data = ws_master.get_all_values()
             master = pd.DataFrame(m_data[1:], columns=m_data[0]) if len(m_data) > 1 else pd.DataFrame()
-        except: master = pd.DataFrame() 
+        except: master = pd.DataFrame()
 
+        # Results
         try:
             ws_res = sh.worksheet("Results")
             data = ws_res.get_all_values()
             results = pd.DataFrame(data[1:], columns=data[0])
-            results.columns = [c.strip() for c in results.columns] 
-            
-            results = results.drop_duplicates(subset=['Date', 'Marker', 'Value'])
-            
-            # Apply Robust Date Parsing
-            results['Date'] = results['Date'].apply(parse_flexible_date)
-            
-            # Apply Robust Number Cleaning
+            results['Date'] = pd.to_datetime(results['Date'], errors='coerce')
             results['NumericValue'] = results['Value'].apply(clean_numeric_value)
-            
         except: results = pd.DataFrame()
 
+        # Events
         try:
             ws_ev = sh.worksheet("Events")
             ev_data = ws_ev.get_all_values()
             events = pd.DataFrame(ev_data[1:], columns=ev_data[0])
-            events['Date'] = events['Date'].apply(parse_flexible_date)
+            events['Date'] = pd.to_datetime(events['Date'], errors='coerce')
         except: 
             ws_ev = sh.add_worksheet("Events", 1000, 5)
             ws_ev.append_row(["Date", "Event", "Type", "Notes"])
@@ -247,26 +228,9 @@ def process_csv_upload(uploaded_file):
             uploaded_file.seek(0)
             df = pd.read_csv(uploaded_file, encoding='ISO-8859-1')
             
-        # Case Insensitive Column Mapping
-        col_map = {c: c.lower() for c in df.columns}
-        df.columns = df.columns.str.lower()
-        
-        # Standardize known columns
-        rename_dict = {}
-        for c in df.columns:
-            if c in ['biomarker', 'test', 'name', 'analyte']: rename_dict[c] = 'Marker'
-            elif c in ['result', 'reading', 'value', 'concentration']: rename_dict[c] = 'Value'
-            elif c in ['time', 'collected', 'date', 'date collected']: rename_dict[c] = 'Date'
-            elif c in ['unit', 'units']: rename_dict[c] = 'Unit'
-            elif c in ['flag', 'status']: rename_dict[c] = 'Flag'
-            
-        df = df.rename(columns=rename_dict)
-        
-        # Ensure we have required columns
         db_columns = ['Marker', 'Value', 'Unit', 'Flag', 'Date', 'Source']
         for col in db_columns:
-            if col not in df.columns: df[col] = "" 
-            
+            if col not in df.columns: df[col] = ""
         df_final = df[db_columns]
         
         client = get_google_sheet_client()
@@ -315,30 +279,23 @@ def get_detailed_status(val, master_row, marker_name):
         unit = str(master_row['Unit']) if pd.notna(master_row['Unit']) else ""
         rng_str = f"{s_min} - {s_max} {unit}"
 
-        if s_min > 0 and val < s_min: return "OUT OF RANGE", "#F87171", "c-red", rng_str, 1
-        if s_max > 0 and val > s_max: return "OUT OF RANGE", "#F87171", "c-red", rng_str, 1
+        if s_min > 0 and val < s_min: return "OUT OF RANGE", "#FF3B30", "c-red", rng_str, 1
+        if s_max > 0 and val > s_max: return "OUT OF RANGE", "#FF3B30", "c-red", rng_str, 1
         
         has_optimal = (o_min > 0 or o_max > 0)
         check_min = o_min if o_min > 0 else s_min
         check_max = o_max if o_max > 0 else s_max
-        if has_optimal and val >= check_min and val <= check_max: return "OPTIMAL", "#22D3EE", "c-blue", rng_str, 3
-        return "IN RANGE", "#34D399", "c-green", rng_str, 4
-    except: return "ERROR", "#71717A", "c-grey", "Error", 5
+        if has_optimal and val >= check_min and val <= check_max: return "OPTIMAL", "#007AFF", "c-blue", rng_str, 3
+        return "IN RANGE", "#34C759", "c-green", rng_str, 4
+    except: return "ERROR", "#8E8E93", "c-grey", "Error", 5
 
-# --- 6. CINEMATIC CHART ENGINE (WITH DIAGNOSTICS) ---
+# --- 6. CHART ENGINE (STABLE RESTORED) ---
 def plot_clinical_trend(marker_name, results_df, events_df, master_df):
-    clean_target = smart_clean(marker_name)
-    results_df['MatchKey'] = results_df['Marker'].apply(smart_clean)
-    chart_data = results_df[results_df['MatchKey'] == clean_target].copy()
+    chart_data = results_df[results_df['Marker'] == marker_name].copy()
+    # Simple sort and drop
+    chart_data = chart_data.dropna(subset=['NumericValue']).sort_values('Date')
     
-    # Debug: Check Raw Data before filtering
-    raw_count = len(chart_data)
-    
-    # Filter valid data
-    chart_data = chart_data.dropna(subset=['NumericValue', 'Date']).sort_values('Date')
-    
-    if chart_data.empty:
-        return "EMPTY", raw_count
+    if chart_data.empty: return None
 
     # Range
     min_val, max_val = 0, 0
@@ -346,111 +303,80 @@ def plot_clinical_trend(marker_name, results_df, events_df, master_df):
     if master_row is not None:
         min_val, max_val = parse_range(master_row['Standard Range'])
 
-    # Y-Axis Scaling for Red Zones
-    data_max = chart_data['NumericValue'].max()
-    y_top = max(data_max, max_val) * 1.2
-    y_bottom = 0
-
     # 1. Base
     base = alt.Chart(chart_data).encode(
-        x=alt.X('Date:T', title=None, axis=alt.Axis(
-            format='%d %b %y', 
-            labelColor='#71717A', 
-            labelFont='JetBrains Mono',
-            tickColor='#27272A', 
-            domain=False, 
-            gridColor='#27272A',
-            gridOpacity=0.2
-        )),
-        y=alt.Y('NumericValue:Q', title=None, scale=alt.Scale(domain=[y_bottom, y_top]), axis=alt.Axis(
-            labelColor='#71717A', 
-            labelFont='JetBrains Mono',
-            tickColor='#27272A', 
-            domain=False, 
-            gridColor='#27272A',
-            gridOpacity=0.2
-        ))
-    )
-
-    # 2. Red Zones
-    danger_low = alt.Chart(pd.DataFrame({'y': [0], 'y2': [min_val]})).mark_rect(
-        color='#EF4444', opacity=0.1
-    ).encode(y='y', y2='y2') if min_val > 0 else None
-
-    danger_high = alt.Chart(pd.DataFrame({'y': [max_val], 'y2': [y_top]})).mark_rect(
-        color='#EF4444', opacity=0.1
-    ).encode(y='y', y2='y2') if max_val > 0 else None
-
-    # 3. Line Style
-    theme_color = '#38BDF8'
-    glow = base.mark_line(color=theme_color, strokeWidth=8, opacity=0.2, interpolate='monotone')
-    line = base.mark_line(color=theme_color, strokeWidth=3, interpolate='monotone')
-    area = base.mark_area(
-        line=False,
-        color=alt.Gradient(
-            gradient='linear',
-            stops=[alt.GradientStop(color=theme_color, offset=0), alt.GradientStop(color='rgba(0,0,0,0)', offset=1)],
-            x1=1, x2=1, y1=1, y2=0
-        ),
-        opacity=0.15,
-        interpolate='monotone'
-    )
-
-    # 4. Points & Tooltips
-    nearest = alt.selection(type='single', nearest=True, on='mouseover', fields=['Date'], empty='none')
-    points = base.mark_circle(size=80, fill='#000000', stroke=theme_color, strokeWidth=2).encode(
-        opacity=alt.condition(nearest, alt.value(1), alt.value(0))
-    ).add_selection(nearest)
-
-    tooltips = base.mark_circle(opacity=0).encode(
+        x=alt.X('Date:T', title=None, axis=alt.Axis(format='%d %b %Y', labelColor='#71717A', tickColor='#27272A', domain=False)),
+        y=alt.Y('NumericValue:Q', title=None, scale=alt.Scale(zero=False, padding=20), axis=alt.Axis(labelColor='#71717A', tickColor='#27272A', domain=False)),
         tooltip=[
             alt.Tooltip('Date:T', format='%d %b %Y'),
             alt.Tooltip('NumericValue:Q', title=marker_name),
             alt.Tooltip('Source')
         ]
+    )
+
+    # 2. Bands
+    bands = alt.Chart(pd.DataFrame({'y': [min_val], 'y2': [max_val]})).mark_rect(
+        color='#10B981', opacity=0.08
+    ).encode(y='y', y2='y2') if max_val > 0 else None
+
+    # 3. Area (Gradient)
+    area = base.mark_area(
+        line={'color': '#3B82F6'},
+        color=alt.Gradient(
+            gradient='linear',
+            stops=[alt.GradientStop(color='#3B82F6', offset=0), alt.GradientStop(color='rgba(59, 130, 246, 0)', offset=1)],
+            x1=1, x2=1, y1=1, y2=0
+        ),
+        opacity=0.4
+    )
+
+    # 4. Line
+    line = base.mark_line(color='#3B82F6', strokeWidth=3)
+
+    # 5. Points
+    points = base.mark_circle(size=80, fill='#18181B', stroke='#3B82F6', strokeWidth=2)
+
+    # 6. Interactive
+    nearest = alt.selection(type='single', nearest=True, on='mouseover', fields=['Date'], empty='none')
+    rules = base.mark_rule(color='#52525B', strokeWidth=1).encode(
+        opacity=alt.condition(nearest, alt.value(1), alt.value(0))
     ).add_selection(nearest)
 
-    # 5. Events
+    # 7. Events
     event_layer = None
     if not events_df.empty:
         ev_rule = alt.Chart(events_df).mark_rule(
-            color='#F97316', strokeWidth=2, strokeDash=[4,4], opacity=0.8
-        ).encode(x='Date:T')
+            color='#F43F5E', strokeWidth=1.5, strokeDash=[4,4]
+        ).encode(x='Date:T', tooltip=['Event', 'Notes'])
         
-        ev_bubble = alt.Chart(events_df).mark_point(
-            filled=True, fill='#09090B', stroke='#F97316', size=1500, shape='circle', strokeWidth=2
-        ).encode(x='Date:T', y=alt.value(30)) 
-
         ev_text = alt.Chart(events_df).mark_text(
-            align='center', baseline='middle',
-            color='#F97316', font='JetBrains Mono', fontSize=11, fontWeight=800, dy=0
-        ).encode(x='Date:T', y=alt.value(30), text='Event')
-        
-        event_layer = ev_rule + ev_bubble + ev_text
+            align='left', baseline='middle', dx=5, dy=-80,
+            color='#F43F5E', angle=0, fontSize=10, fontWeight=600
+        ).encode(x='Date:T', text='Event')
+        event_layer = ev_rule + ev_text
 
-    final = glow + area + line + points + tooltips
-    if danger_low: final = danger_low + final
-    if danger_high: final = danger_high + final
+    final = line + points + area + rules
+    if bands: final = bands + final
     if event_layer: final = final + event_layer
-    
-    return final.properties(height=320, background='transparent').configure_view(strokeWidth=0), raw_count
+
+    return final.properties(height=320).configure_view(strokeWidth=0).interactive()
 
 # --- 7. MAIN APP ---
 master_df, results_df, events_df, status = load_data()
 
 # HEADER
 st.markdown("""
-<div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #1E1E20; padding-bottom:15px; margin-bottom:20px;">
+<div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #333; padding-bottom:10px; margin-bottom:10px;">
     <div>
-        <h2 style="margin:0; font-family:'Inter'; font-weight:700; letter-spacing:-0.5px; font-size:20px;">HealthOS <span style="color:#52525B; font-weight:400;">PRO</span></h2>
+        <h2 style="margin:0; font-family:'Inter'; font-weight:700; letter-spacing:-1px;">HealthOS <span style="color:#71717A; font-weight:400;">Clinical</span></h2>
     </div>
     <div style="text-align:right;">
-         <span class="tag" style="background:#0F172A; color:#38BDF8; border:1px solid #0EA5E9;">PATIENT: DEMO</span>
+         <span class="tag" style="background:#064E3B; color:#34D399; border:1px solid #059669;">Patient: Demo Mode</span>
     </div>
 </div>
 """, unsafe_allow_html=True)
 
-# TOP NAVIGATION
+# TOP NAVIGATION (HARDCODED CAPS FORCED)
 mode = st.radio("Navigation", ["DASHBOARD", "TREND ANALYSIS", "PROTOCOL LOG", "DATA TOOLS"], horizontal=True, label_visibility="collapsed")
 
 # MODE 1: DASHBOARD
@@ -493,10 +419,10 @@ if mode == "DASHBOARD":
     """, unsafe_allow_html=True)
     
     st.markdown(f"""<div class="hud-card"><div class="hud-val" style="color:#FAFAFA">{len(df_display)}</div><div class="hud-label">TOTAL TESTED</div></div>""", unsafe_allow_html=True)
-    st.markdown(f"""<div class="hud-card"><div class="hud-val" style="color:#22D3EE">{stats['Blue']}</div><div class="hud-label">OPTIMAL</div></div>""", unsafe_allow_html=True)
-    st.markdown(f"""<div class="hud-card"><div class="hud-val" style="color:#34D399">{stats['Green']}</div><div class="hud-label">NORMAL</div></div>""", unsafe_allow_html=True)
-    st.markdown(f"""<div class="hud-card"><div class="hud-val" style="color:#FBBF24">{stats['Orange']}</div><div class="hud-label">BORDERLINE</div></div>""", unsafe_allow_html=True)
-    st.markdown(f"""<div class="hud-card"><div class="hud-val" style="color:#F87171">{stats['Red']}</div><div class="hud-label">ABNORMAL</div></div>""", unsafe_allow_html=True)
+    st.markdown(f"""<div class="hud-card"><div class="hud-val" style="color:#3B82F6">{stats['Blue']}</div><div class="hud-label">OPTIMAL</div></div>""", unsafe_allow_html=True)
+    st.markdown(f"""<div class="hud-card"><div class="hud-val" style="color:#10B981">{stats['Green']}</div><div class="hud-label">NORMAL</div></div>""", unsafe_allow_html=True)
+    st.markdown(f"""<div class="hud-card"><div class="hud-val" style="color:#F59E0B">{stats['Orange']}</div><div class="hud-label">BORDERLINE</div></div>""", unsafe_allow_html=True)
+    st.markdown(f"""<div class="hud-card"><div class="hud-val" style="color:#EF4444">{stats['Red']}</div><div class="hud-label">ABNORMAL</div></div>""", unsafe_allow_html=True)
     
     st.markdown("</div>", unsafe_allow_html=True)
     
@@ -540,16 +466,8 @@ elif mode == "TREND ANALYSIS":
     
     for m in selected_markers:
         st.markdown(f"#### {m}")
-        chart, raw_rows = plot_clinical_trend(m, results_df, events_df, master_df)
-        
-        if chart == "EMPTY":
-            st.error(f"⚠️ No readable data for {m}.")
-            with st.expander(f"Diagnostics: Found {raw_rows} raw rows"):
-                clean_target = smart_clean(m)
-                st.write(results_df[results_df['MatchKey'] == clean_target])
-                st.caption("Check if 'NumericValue' column is NaN or 'Date' is NaT.")
-        elif chart: 
-            st.altair_chart(chart, use_container_width=True)
+        chart = plot_clinical_trend(m, results_df, events_df, master_df)
+        if chart: st.altair_chart(chart, use_container_width=True)
         st.markdown("<br>", unsafe_allow_html=True)
 
 # MODE 3: PROTOCOL
