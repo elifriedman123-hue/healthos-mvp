@@ -11,7 +11,7 @@ from difflib import SequenceMatcher
 # --- 1. CONFIGURATION ---
 st.set_page_config(page_title="HealthOS Clinical", layout="wide", initial_sidebar_state="expanded")
 
-# --- 2. STYLING (The "HealthOS" Look) ---
+# --- 2. STYLING ---
 st.markdown("""
     <style>
     /* Global Reset */
@@ -44,7 +44,6 @@ st.markdown("""
 SHEET_NAME = "HealthOS_DB"
 MASTER_FILE_LOCAL = "Biomarker_Master_Elite.csv"
 
-# Auth
 def get_google_sheet_client():
     scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
     current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -73,7 +72,6 @@ def load_data():
     try:
         sh = client.open(SHEET_NAME)
         
-        # Master Data (For Ranges)
         try:
             ws_master = sh.worksheet("Master")
             m_data = ws_master.get_all_values()
@@ -85,7 +83,6 @@ def load_data():
             if os.path.exists(master_path): master = pd.read_csv(master_path)
             else: master = pd.DataFrame()
 
-        # Lab Results
         try:
             ws_res = sh.worksheet("Results")
             data = ws_res.get_all_values()
@@ -94,7 +91,6 @@ def load_data():
             results['NumericValue'] = pd.to_numeric(results['Value'], errors='coerce')
         except: results = pd.DataFrame()
 
-        # Clinical Events
         try:
             ws_ev = sh.worksheet("Events")
             ev_data = ws_ev.get_all_values()
@@ -125,7 +121,6 @@ def clear_data():
     except: pass
     st.cache_data.clear()
 
-# --- 4. UPLOAD ENGINE (SMART ALIGNMENT) ---
 def process_csv_upload(uploaded_file):
     try:
         try: df = pd.read_csv(uploaded_file)
@@ -186,14 +181,34 @@ def get_detailed_status(val, master_row, marker_name):
         unit = str(master_row['Unit']) if pd.notna(master_row['Unit']) else ""
         rng_str = f"{s_min} - {s_max} {unit}"
 
+        # 1. Red (Out of Range)
         if s_min > 0 and val < s_min: return "OUT OF RANGE", "#FF3B30", "c-red", rng_str, 1
         if s_max > 0 and val > s_max: return "OUT OF RANGE", "#FF3B30", "c-red", rng_str, 1
         
+        # 2. Orange (Borderline)
+        # Check higher is better logic
+        higher_is_better = ["VITAMIND", "VITAMIN D", "DHEA", "TESTOSTERONE", "MAGNESIUM", "B12", "FOLATE", "HDL", "FERRITIN"]
+        if any(x in clean_name for x in higher_is_better):
+            if o_min > 0 and val < o_min: return "BORDERLINE", "#FF9500", "c-orange", rng_str, 2
+        
+        # Check specific HDL
+        if "HDL" in clean_name and "NON" not in clean_name and val < 1.4:
+            return "BORDERLINE", "#FF9500", "c-orange", rng_str, 2
+            
+        # Check Buffer (Top/Bottom 2.5% of range)
+        range_span = s_max - s_min
+        buffer = range_span * 0.025 if range_span > 0 else 0
+        if buffer > 0:
+            if val < (s_min + buffer): return "BORDERLINE", "#FF9500", "c-orange", rng_str, 2
+            if val > (s_max - buffer): return "BORDERLINE", "#FF9500", "c-orange", rng_str, 2
+
+        # 3. Blue (Optimal)
         has_optimal = (o_min > 0 or o_max > 0)
         check_min = o_min if o_min > 0 else s_min
         check_max = o_max if o_max > 0 else s_max
-        
         if has_optimal and val >= check_min and val <= check_max: return "OPTIMAL", "#007AFF", "c-blue", rng_str, 3
+        
+        # 4. Green (Normal/In Range)
         return "IN RANGE", "#34C759", "c-green", rng_str, 4
     except: return "ERROR", "#8E8E93", "c-grey", "Error", 5
 
@@ -207,7 +222,9 @@ def plot_clinical_trend(marker_name, results_df, events_df):
         tooltip=['Date', 'Value', 'Source']
     )
     
-    line = base.mark_line(color='#007AFF', strokeWidth=3).encode(
+    line = base.mark_line(
+        color='#007AFF', 
+        strokeWidth=3,
         point=alt.OverlayMarkDef(color='#007AFF', size=60)
     )
 
@@ -230,7 +247,7 @@ master_df, results_df, events_df, status = load_data()
 st.sidebar.header("👨‍⚕️ Clinical OS")
 mode = st.sidebar.radio("Navigation", ["Patient Overview", "Trends (TRT View)", "Protocol Manager", "Data Ingestion"])
 
-# MODE 1: THE "PRETTY" DASHBOARD (NO AI)
+# MODE 1: PATIENT DASHBOARD
 if mode == "Patient Overview":
     if results_df.empty: st.warning("No Data."); st.stop()
     
@@ -249,6 +266,7 @@ if mode == "Patient Overview":
             
             if "OPTIMAL" in status: stats["Blue"] += 1
             elif "IN RANGE" in status: stats["Green"] += 1
+            elif "BORDERLINE" in status: stats["Orange"] += 1
             elif "OUT OF RANGE" in status: stats["Red"] += 1
             
             processed_rows.append({"Marker": master['Biomarker'], "Value": row['Value'], "Status": status, "Color": color, "Range": rng, "Priority": prio})
@@ -256,9 +274,15 @@ if mode == "Patient Overview":
     df_display = pd.DataFrame(processed_rows)
     if df_display.empty: st.warning("No matched biomarkers."); st.stop()
 
-    # Metrics Grid
+    # Metrics Grid (RESTORED TESTED COUNT)
     st.markdown("""<div class="stat-grid">""", unsafe_allow_html=True)
-    metrics = [("Optimal", stats['Blue'], "#007AFF"), ("Normal", stats['Green'], "#34C759"), ("Abnormal", stats['Red'], "#FF3B30")]
+    metrics = [
+        ("Total Tested", len(df_display), "white"), # Restored!
+        ("Optimal", stats['Blue'], "#007AFF"), 
+        ("Normal", stats['Green'], "#34C759"), 
+        ("Borderline", stats['Orange'], "#FF9500"), 
+        ("Abnormal", stats['Red'], "#FF3B30")
+    ]
     grid_html = ""
     for l, v, c in metrics:
         grid_html += f"""<div class="stat-box"><div class="stat-num" style="color:{c};">{v}</div><div class="stat-label" style="color:{c};">{l}</div></div>"""
@@ -266,11 +290,14 @@ if mode == "Patient Overview":
     
     st.divider()
     
-    # The Cards
+    # SORTING LOGIC: Red -> Orange (Left), Blue -> Green (Right)
     c_warn, c_good = st.columns(2)
+    
     with c_warn:
         st.subheader("⚠️ Attention")
-        bad_df = df_display[df_display['Priority'] == 1]
+        # Filter for Red (1) and Orange (2), Sort by Priority Ascending (1, then 2)
+        bad_df = df_display[df_display['Priority'].isin([1, 2])].sort_values('Priority', ascending=True)
+        
         if bad_df.empty: st.markdown("✅ No Issues")
         for _, r in bad_df.iterrows():
             st.markdown(f"""
@@ -282,7 +309,9 @@ if mode == "Patient Overview":
 
     with c_good:
         st.subheader("✅ Optimized")
-        good_df = df_display[df_display['Priority'].isin([3, 4])]
+        # Filter for Blue (3) and Green (4), Sort by Priority Ascending (3, then 4)
+        good_df = df_display[df_display['Priority'].isin([3, 4])].sort_values('Priority', ascending=True)
+        
         for _, r in good_df.iterrows():
             st.markdown(f"""
             <div class="glass-card" style="border-left:4px solid {r['Color']}">
