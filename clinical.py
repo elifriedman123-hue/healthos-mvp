@@ -1,10 +1,7 @@
 import streamlit as st
 import pandas as pd
-import gspread
-from oauth2client.service_account import ServiceAccountCredentials
 import altair as alt
 import re
-import os
 from difflib import SequenceMatcher
 from io import StringIO
 
@@ -15,7 +12,14 @@ st.set_page_config(
     initial_sidebar_state="collapsed" 
 )
 
-# --- 2. UI STYLING ---
+# --- 2. SESSION STATE DATABASE (The Fix) ---
+# This replaces Google Sheets. Data lives in memory for the demo.
+if 'data' not in st.session_state:
+    st.session_state['data'] = pd.DataFrame(columns=['Date', 'Marker', 'Value', 'Unit'])
+if 'events' not in st.session_state:
+    st.session_state['events'] = pd.DataFrame(columns=['Date', 'Event', 'Type', 'Notes'])
+
+# --- 3. UI STYLING ---
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap');
@@ -43,29 +47,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- 3. DATA ENGINE ---
-SHEET_NAME = "HealthOS_DB"
-
-def get_google_sheet_client():
-    scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    key_file_path = os.path.join(current_dir, "service_account.json")
-    if os.path.exists(key_file_path):
-        try:
-            creds = ServiceAccountCredentials.from_json_keyfile_name(key_file_path, scope)
-            return gspread.authorize(creds)
-        except: return None
-    elif "gcp_service_account" in st.secrets:
-        try:
-            secret_value = st.secrets["gcp_service_account"]
-            if isinstance(secret_value, str): creds_dict = json.loads(secret_value)
-            else: creds_dict = secret_value
-            creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
-            return gspread.authorize(creds)
-        except: return None
-    return None
-
-# --- CLEANERS ---
+# --- 4. DATA LOGIC ---
 def clean_numeric_value(val):
     if pd.isna(val) or str(val).strip() == "": return None
     s = str(val).strip().replace(',', '').replace(' ', '')
@@ -89,88 +71,33 @@ def parse_flexible_date(date_str):
         except: continue
     return pd.to_datetime(date_str, errors='coerce')
 
-# --- LOAD DATA ---
-@st.cache_data(ttl=5)
-def load_data():
-    master = pd.DataFrame()
-    results = pd.DataFrame(columns=['Date', 'Marker', 'Value', 'NumericValue', 'CleanMarker'])
-    events = pd.DataFrame(columns=['Date', 'Event'])
+def process_data_for_app():
+    # 1. Get from Session
+    results = st.session_state['data'].copy()
+    if results.empty: return pd.DataFrame(), pd.DataFrame()
     
-    client = get_google_sheet_client()
-    if not client: return master, results, events, "Auth Failed"
+    # 2. Clean
+    results['Date'] = results['Date'].apply(parse_flexible_date)
+    results['CleanMarker'] = results['Marker'].apply(clean_marker_name)
+    results['NumericValue'] = results['Value'].apply(clean_numeric_value)
     
-    try:
-        sh = client.open(SHEET_NAME)
+    # 3. Deduplicate (The "Self-Healing" Logic)
+    results['Fingerprint'] = results['Date'].astype(str) + "_" + results['CleanMarker'] + "_" + results['NumericValue'].astype(str)
+    results = results.drop_duplicates(subset=['Fingerprint'], keep='last')
+    
+    # 4. Events
+    events = st.session_state['events'].copy()
+    if not events.empty:
+        events['Date'] = events['Date'].apply(parse_flexible_date)
         
-        # Master
-        try:
-            ws_master = sh.worksheet("Master")
-            m_data = ws_master.get_all_values()
-            if len(m_data) > 1:
-                master = pd.DataFrame(m_data[1:], columns=m_data[0])
-        except: pass 
+    return results, events
 
-        # Results
-        try:
-            ws_res = sh.worksheet("Results")
-            data = ws_res.get_all_values()
-            if len(data) > 1:
-                results = pd.DataFrame(data[1:], columns=data[0])
-                results.columns = [c.strip() for c in results.columns] 
-                results['DateObj'] = results['Date'].apply(parse_flexible_date)
-                results['CleanMarker'] = results['Marker'].apply(clean_marker_name)
-                results['NumericValue'] = results['Value'].apply(clean_numeric_value)
-                results['Fingerprint'] = results['DateObj'].astype(str) + "_" + results['CleanMarker'] + "_" + results['NumericValue'].astype(str)
-                results = results.drop_duplicates(subset=['Fingerprint'], keep='last')
-                results['Date'] = results['DateObj']
-        except: pass
-
-        # Events
-        try:
-            ws_ev = sh.worksheet("Events")
-            ev_data = ws_ev.get_all_values()
-            if len(ev_data) > 1:
-                events = pd.DataFrame(ev_data[1:], columns=ev_data[0])
-                events['Date'] = events['Date'].apply(parse_flexible_date)
-        except: 
-            try:
-                ws_ev = sh.add_worksheet("Events", 1000, 5)
-                ws_ev.append_row(["Date", "Event", "Type", "Notes"])
-            except: pass
-
-        return master, results, events, "OK"
-    except Exception as e: 
-        return master, results, events, str(e)
-
-# --- WRITE OPS (WITH CACHE CLEAR) ---
-def add_clinical_event(date, event_name, event_type, notes):
-    client = get_google_sheet_client()
-    if not client: return
-    try:
-        sh = client.open(SHEET_NAME)
-        try: ws = sh.worksheet("Events")
-        except: ws = sh.add_worksheet("Events", 1000, 5)
-        ws.append_row([str(date), event_name, event_type, notes])
-        st.cache_data.clear() # CRITICAL: Clear cache so update shows immediately
-    except: pass
-
-def clear_data():
-    client = get_google_sheet_client()
-    if not client: return
-    try:
-        sh = client.open(SHEET_NAME)
-        try: sh.worksheet("Results").clear(); sh.worksheet("Results").append_row(['Marker', 'Value', 'Unit', 'Flag', 'Date', 'Source'])
-        except: pass
-        try: sh.worksheet("Events").clear(); sh.worksheet("Events").append_row(["Date", "Event", "Type", "Notes"])
-        except: pass
-        st.cache_data.clear() # CRITICAL
-    except: pass
-
-def process_csv_upload(uploaded_file):
+def process_upload(uploaded_file):
     try:
         try: df_new = pd.read_csv(uploaded_file)
         except: uploaded_file.seek(0); df_new = pd.read_csv(uploaded_file, encoding='ISO-8859-1')
         
+        # Normalize
         col_map = {c: c.lower() for c in df_new.columns}
         df_new.columns = df_new.columns.str.lower()
         rename_dict = {}
@@ -179,54 +106,45 @@ def process_csv_upload(uploaded_file):
             elif c in ['result', 'reading', 'value', 'concentration']: rename_dict[c] = 'Value'
             elif c in ['time', 'collected', 'date', 'date collected']: rename_dict[c] = 'Date'
             elif c in ['unit', 'units']: rename_dict[c] = 'Unit'
-            elif c in ['flag', 'status']: rename_dict[c] = 'Flag'
         df_new = df_new.rename(columns=rename_dict)
         
-        db_cols = ['Marker', 'Value', 'Unit', 'Flag', 'Date', 'Source']
-        for c in db_cols: 
+        # Keep only needed columns
+        needed = ['Date', 'Marker', 'Value', 'Unit']
+        for c in needed: 
             if c not in df_new.columns: df_new[c] = ""
-        df_new = df_new[db_cols]
+        df_new = df_new[needed]
+        
+        # Update Session
+        st.session_state['data'] = pd.concat([st.session_state['data'], df_new], ignore_index=True)
+        return "Success", len(df_new)
+    except Exception as e: return f"Error: {str(e)}", 0
 
-        client = get_google_sheet_client()
-        if not client: return "Auth Error"
-        
-        sh = client.open(SHEET_NAME)
-        try: 
-            ws = sh.worksheet("Results")
-            existing = pd.DataFrame(ws.get_all_values()[1:], columns=db_cols)
-        except: 
-            ws = sh.add_worksheet("Results", 1000, 10); ws.append_row(db_cols)
-            existing = pd.DataFrame(columns=db_cols)
+def add_event(date, name, type, note):
+    new_event = pd.DataFrame([{"Date": str(date), "Event": name, "Type": type, "Notes": note}])
+    st.session_state['events'] = pd.concat([st.session_state['events'], new_event], ignore_index=True)
 
-        combined = pd.concat([existing, df_new], ignore_index=True)
-        combined['clean_date'] = combined['Date'].apply(parse_flexible_date).astype(str)
-        combined['clean_marker'] = combined['Marker'].apply(clean_marker_name)
-        combined['clean_val'] = combined['Value'].apply(clean_numeric_value).astype(str)
-        combined['fingerprint'] = combined['clean_date'] + combined['clean_marker'] + combined['clean_val']
-        
-        final = combined.drop_duplicates(subset=['fingerprint'], keep='last')
-        final = final[db_cols] 
-        
-        ws.clear()
-        ws.append_row(db_cols)
-        ws.append_rows(final.astype(str).values.tolist())
-        
-        st.cache_data.clear() # CRITICAL: Force refresh of data
-        return "Success"
-    except Exception as e: return f"Error: {str(e)}"
+# --- 5. MASTER RANGES (Embedded) ---
+def get_master_data():
+    data = [
+        ["Biomarker", "Standard Range", "Optimal Min", "Optimal Max", "Unit", "Fuzzy Match Keywords"],
+        ["Total Testosterone", "264-916", "600", "1000", "ng/dL", "TESTOSTERONE, TESTO, TOTAL T"],
+        ["Haematocrit", "38.3-48.6", "40", "50", "%", "HCT, HEMATOCRIT, PCV"],
+        ["Oestradiol", "7.6-42.6", "20", "35", "pg/mL", "E2, ESTRADIOL, 17-BETA"],
+        ["PSA", "0-4.0", "0", "2.5", "ng/mL", "PROSTATE SPECIFIC ANTIGEN"],
+        ["LDL Cholesterol", "0-100", "0", "90", "mg/dL", "LDL, BAD CHOLESTEROL"],
+        ["Ferritin", "30-400", "50", "150", "ug/L", "FERRITIN"]
+    ]
+    return pd.DataFrame(data[1:], columns=data[0])
 
-# --- UTILS ---
+# --- 6. UTILS ---
 def fuzzy_match(marker, master):
     lab_clean = clean_marker_name(marker)
-    best_row, best_score = None, 0.0
-    if master.empty: return None
     for _, row in master.iterrows():
         keywords = [clean_marker_name(k) for k in str(row['Fuzzy Match Keywords']).split(",")]
         for key in keywords:
             if key == lab_clean: return row
-            score = SequenceMatcher(None, lab_clean, key).ratio()
-            if score > best_score: best_score, best_row = score, row
-    return best_row if best_score > 0.60 else None
+            if SequenceMatcher(None, lab_clean, key).ratio() > 0.6: return row
+    return None
 
 def parse_range(range_str):
     if pd.isna(range_str): return 0,0
@@ -247,7 +165,7 @@ def get_status(val, master_row):
         return "IN RANGE", "#34C759", 4
     except: return "ERROR", "#8E8E93", 5
 
-# --- ALGORITHM: SMART STAGGER ---
+# --- 7. CHARTING (SMART STAGGER + BOX) ---
 def calculate_stagger(events_df, days_threshold=20):
     if events_df.empty: return events_df
     events_df = events_df.sort_values('Date').copy()
@@ -264,37 +182,31 @@ def calculate_stagger(events_df, days_threshold=20):
                 lane_end_dates[lane] = current_date
                 assigned = True
             else: lane += 1
-    # Assign pixels based on lane
     events_df['y_top'] = 10 + (events_df['lane'] * 35)
     events_df['y_bottom'] = events_df['y_top'] + 25
     events_df['y_text'] = events_df['y_top'] + 12.5
     return events_df
 
-# --- CHARTING ---
 def plot_chart(marker, results, events, master):
     df = results[results['CleanMarker'] == clean_marker_name(marker)].copy()
     df = df.dropna(subset=['NumericValue', 'Date']).sort_values('Date')
     if df.empty: return None
 
-    # Calc Date Span
     min_date, max_date = df['Date'].min(), df['Date'].max()
     date_span = (max_date - min_date).days
     if date_span < 10: date_span = 30
     
-    # Range & Limits
     min_val, max_val = 0, 0
     m_row = fuzzy_match(marker, master)
     if m_row is not None: min_val, max_val = parse_range(m_row['Standard Range'])
     d_max = df['NumericValue'].max()
     y_top = max(d_max, max_val) * 1.2
 
-    # Base
     base = alt.Chart(df).encode(
         x=alt.X('Date:T', axis=alt.Axis(format='%b %y', labelColor='#71717A', tickColor='#27272A', domain=False, grid=False)),
         y=alt.Y('NumericValue:Q', scale=alt.Scale(domain=[0, y_top]), axis=alt.Axis(labelColor='#71717A', tickColor='#27272A', domain=False, gridColor='#27272A', gridOpacity=0.2))
     )
 
-    # Zones
     danger_low = alt.Chart(pd.DataFrame({'y':[0], 'y2':[min_val]})).mark_rect(color='#EF4444', opacity=0.1).encode(y='y', y2='y2') if min_val>0 else None
     optimal_band = alt.Chart(pd.DataFrame({'y':[min_val], 'y2':[max_val]})).mark_rect(color='#10B981', opacity=0.1).encode(y='y', y2='y2') if max_val>0 else None
     danger_high = alt.Chart(pd.DataFrame({'y':[max_val], 'y2':[y_top]})).mark_rect(color='#EF4444', opacity=0.1).encode(y='y', y2='y2') if max_val>0 else None
@@ -308,7 +220,6 @@ def plot_chart(marker, results, events, master):
     points = base.mark_circle(size=80, fill='#000000', stroke=color, strokeWidth=2).encode(opacity=alt.condition(nearest, alt.value(1), alt.value(0))).add_selection(nearest)
     tooltips = base.mark_circle(opacity=0).encode(tooltip=[alt.Tooltip('Date:T', format='%d %b %Y'), alt.Tooltip('NumericValue:Q', title=marker)])
 
-    # STAGGERED EVENTS
     ev_layer = None
     if not events.empty:
         staggered_events = calculate_stagger(events, days_threshold=int(date_span*0.15))
@@ -330,25 +241,24 @@ def plot_chart(marker, results, events, master):
 
     return alt.layer(*layers).properties(height=300, background='transparent').configure_view(strokeWidth=0)
 
-# --- 7. UI ---
-master, results, events, status = load_data()
+# --- 8. MAIN UI ---
+master = get_master_data()
+results, events = process_data_for_app()
 
-# HEADER
+# Header
 st.markdown("""<div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #333; padding-bottom:10px; margin-bottom:10px;">
     <div><h2 style="margin:0; font-family:'Inter'; font-weight:700; letter-spacing:-1px;">HealthOS <span style="color:#71717A;">PRO</span></h2></div>
     <div><span class="tag" style="background:#064E3B; color:#34D399; border:1px solid #059669;">PATIENT: DEMO</span></div></div>""", unsafe_allow_html=True)
 
-if status != "OK":
-    st.error(f"⚠️ System Offline: {status}")
-    st.stop()
-
 nav = st.radio("NAV", ["DASHBOARD", "TREND ANALYSIS", "PROTOCOL LOG", "DATA TOOLS"], horizontal=True, label_visibility="collapsed")
 
 if nav == "DASHBOARD":
-    if results.empty: st.info("No Data."); st.stop()
+    if results.empty: st.info("No Data loaded. Go to 'DATA TOOLS' to upload CSV."); st.stop()
+    
     dates = sorted(results['Date'].dropna().unique(), reverse=True)
     sel_date = st.selectbox("REPORT DATE", [d.strftime('%d %b %Y').upper() for d in dates])
     subset = results[results['Date'].dt.strftime('%d %b %Y').str.upper() == sel_date].copy()
+    
     rows, counts = [], {1:0, 2:0, 3:0, 4:0}
     for _, r in subset.iterrows():
         m_row = fuzzy_match(r['Marker'], master)
@@ -384,7 +294,6 @@ if nav == "DASHBOARD":
 elif nav == "TREND ANALYSIS":
     if results.empty: st.warning("No Data."); st.stop()
     markers = sorted(results['CleanMarker'].unique())
-    # Smart Defaults for the Story
     defaults = [m for m in ['TOTAL TESTOSTERONE', 'HAEMATOCRIT', 'PSA', 'FERRITIN', 'LDL CHOLESTEROL'] if m in markers]
     sel = st.multiselect("Select Biomarkers", markers, default=defaults)
     for m in sel:
@@ -400,7 +309,7 @@ elif nav == "PROTOCOL LOG":
         with c2: n = st.text_input("Event Name")
         with c3: t = st.selectbox("Type", ["Medication", "Lifestyle", "Procedure"])
         if st.form_submit_button("Add Event"):
-            add_clinical_event(d, n, t, "")
+            add_event(d, n, t, "")
             st.success("Added"); st.rerun()
     if not events.empty: st.dataframe(events, use_container_width=True)
 
@@ -408,37 +317,12 @@ elif nav == "DATA TOOLS":
     st.markdown('<div class="section-header">Data Pipeline</div>', unsafe_allow_html=True)
     up = st.file_uploader("Upload CSV", type=['csv'])
     if up and st.button("Process Batch"):
-        msg = process_csv_upload(up)
-        if msg=="Success": st.success("Done"); st.rerun()
+        msg, count = process_upload(up)
+        if msg=="Success": st.success(f"Processed {count} rows."); st.rerun()
         else: st.error(msg)
         
     st.markdown("---")
-    # Backup Button
-    if st.button("🚀 LOAD 'CLINICAL THRILLER' STORY"):
-        story_csv = """Date,Marker,Value,Unit
-2023-01-15,Total Testosterone,240,ng/dL
-2023-01-15,Haematocrit,42,%
-2023-01-15,Oestradiol,18,pg/mL
-2023-01-15,LDL Cholesterol,145,mg/dL
-2023-05-10,Total Testosterone,1550,ng/dL
-2023-05-10,Haematocrit,54,%
-2023-05-10,Oestradiol,85,pg/mL
-2023-05-10,LDL Cholesterol,138,mg/dL
-2023-07-20,Total Testosterone,950,ng/dL
-2023-07-20,Haematocrit,48,%
-2023-07-20,Oestradiol,42,pg/mL
-2023-10-15,Total Testosterone,850,ng/dL
-2023-10-15,Haematocrit,45,%
-2023-10-15,Oestradiol,28,pg/mL
-2023-10-15,LDL Cholesterol,95,mg/dL"""
-        clear_data()
-        process_csv_upload(StringIO(story_csv))
-        add_clinical_event("2023-02-01", "Started TRT (200mg)", "Medication", "")
-        add_clinical_event("2023-05-12", "Phlebotomy (High HCT)", "Procedure", "")
-        add_clinical_event("2023-05-15", "Reduced Dose (120mg)", "Medication", "")
-        add_clinical_event("2023-06-01", "Cardio Protocol", "Lifestyle", "")
-        st.success("Story Loaded!"); st.rerun()
-
-    if st.button("⚠️ WIPE DATABASE"):
-        clear_data()
+    if st.button("⚠️ WIPE SESSION"):
+        st.session_state['data'] = pd.DataFrame(columns=['Date', 'Marker', 'Value', 'Unit'])
+        st.session_state['events'] = pd.DataFrame(columns=['Date', 'Event', 'Type', 'Notes'])
         st.warning("Wiped."); st.rerun()
