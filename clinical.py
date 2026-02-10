@@ -14,7 +14,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed" 
 )
 
-# --- 2. CINEMATIC UI STYLING ---
+# --- 2. UI STYLING ---
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap');
@@ -302,21 +302,21 @@ def plot_chart(marker, results, events, master):
             color='#EF4444', strokeWidth=2, strokeDash=[4, 4], opacity=0.8
         ).encode(x='Date:T')
         
-        # The Black Box with Red Dotted Border (Hides the line behind text)
+        # The Black Box with Red Dotted Border
         ev_box = alt.Chart(events).mark_point(
             shape="rect",
-            size=3000, # Wide rectangle
-            fill="#000000", # Black fill blocks the line
-            stroke="#EF4444", # Red border
-            strokeDash=[2, 2], # Dotted border
+            size=6000, # Increased Size for Visibility
+            fill="#000000",
+            stroke="#EF4444",
+            strokeDash=[4, 4],
             strokeWidth=2
-        ).encode(x='Date:T', y=alt.value(25)) # Positioned at top
+        ).encode(x='Date:T', y=alt.value(35)) # Moved Down
         
-        # The Text (Inside the box)
+        # The Text
         ev_txt = alt.Chart(events).mark_text(
             align='center', baseline='middle',
-            color='#EF4444', font='JetBrains Mono', fontSize=10, fontWeight=700, dy=0
-        ).encode(x='Date:T', y=alt.value(25), text='Event')
+            color='#EF4444', font='JetBrains Mono', fontSize=11, fontWeight=700, dy=0
+        ).encode(x='Date:T', y=alt.value(35), text='Event')
         
         ev_layer = ev_rule + ev_box + ev_txt
 
