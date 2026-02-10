@@ -5,7 +5,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 import altair as alt
 import re
 import os
-from difflib import SequenceMatcher # <--- THIS WAS MISSING
+from difflib import SequenceMatcher
 
 # --- 1. CONFIGURATION ---
 st.set_page_config(
@@ -121,16 +121,13 @@ def load_data():
                 results = pd.DataFrame(data[1:], columns=data[0])
                 results.columns = [c.strip() for c in results.columns] 
                 
-                # 1. Parse & Clean
                 results['DateObj'] = results['Date'].apply(parse_flexible_date)
                 results['CleanMarker'] = results['Marker'].apply(clean_marker_name)
                 results['NumericValue'] = results['Value'].apply(clean_numeric_value)
                 
-                # 2. FINGERPRINT & DEDUPLICATE
                 results['Fingerprint'] = results['DateObj'].astype(str) + "_" + results['CleanMarker'] + "_" + results['NumericValue'].astype(str)
                 results = results.drop_duplicates(subset=['Fingerprint'], keep='last')
                 
-                # 3. Finalize
                 results['Date'] = results['DateObj']
         except: pass
 
@@ -142,7 +139,6 @@ def load_data():
                 events = pd.DataFrame(ev_data[1:], columns=ev_data[0])
                 events['Date'] = events['Date'].apply(parse_flexible_date)
         except: 
-            # Init Events if missing
             try:
                 ws_ev = sh.add_worksheet("Events", 1000, 5)
                 ws_ev.append_row(["Date", "Event", "Type", "Notes"])
@@ -210,7 +206,7 @@ def process_csv_upload(uploaded_file):
 
         combined = pd.concat([existing, df_new], ignore_index=True)
         
-        # Parse for Deduplication
+        # Deduplication
         combined['clean_date'] = combined['Date'].apply(parse_flexible_date).astype(str)
         combined['clean_marker'] = combined['Marker'].apply(clean_marker_name)
         combined['clean_val'] = combined['Value'].apply(clean_numeric_value).astype(str)
@@ -261,7 +257,7 @@ def get_status(val, master_row):
         return "IN RANGE", "#34C759", 4
     except: return "ERROR", "#8E8E93", 5
 
-# --- CHARTING ---
+# --- CHARTING (RED INTERVENTION LINES + BLUE BLOOD DATES + SHADING) ---
 def plot_chart(marker, results, events, master):
     df = results[results['CleanMarker'] == clean_marker_name(marker)].copy()
     df = df.dropna(subset=['NumericValue', 'Date']).sort_values('Date')
@@ -274,37 +270,73 @@ def plot_chart(marker, results, events, master):
     d_max = df['NumericValue'].max()
     y_top = max(d_max, max_val) * 1.2
 
+    # 1. Base Chart
     base = alt.Chart(df).encode(
         x=alt.X('Date:T', axis=alt.Axis(format='%d %b %y', labelColor='#71717A', tickColor='#27272A', domain=False, grid=False)),
         y=alt.Y('NumericValue:Q', scale=alt.Scale(domain=[0, y_top]), axis=alt.Axis(labelColor='#71717A', tickColor='#27272A', domain=False, gridColor='#27272A', gridOpacity=0.2))
     )
 
+    # 2. ZONED SHADING (Red/Green/Red)
+    # Low Danger (Red)
     danger_low = alt.Chart(pd.DataFrame({'y':[0], 'y2':[min_val]})).mark_rect(color='#EF4444', opacity=0.1).encode(y='y', y2='y2') if min_val>0 else None
+    
+    # Optimal/Normal Band (Green)
+    optimal_band = alt.Chart(pd.DataFrame({'y':[min_val], 'y2':[max_val]})).mark_rect(color='#10B981', opacity=0.1).encode(y='y', y2='y2') if max_val>0 else None
+    
+    # High Danger (Red)
     danger_high = alt.Chart(pd.DataFrame({'y':[max_val], 'y2':[y_top]})).mark_rect(color='#EF4444', opacity=0.1).encode(y='y', y2='y2') if max_val>0 else None
 
+    # 3. BLOOD TEST DATES (Faint Blue Dotted Lines)
+    blood_dates = base.mark_rule(
+        color='#38BDF8', 
+        strokeDash=[2, 2], 
+        strokeWidth=1,
+        opacity=0.3
+    ).encode(x='Date:T')
+
+    # 4. DATA LINE
     color = '#38BDF8'
     glow = base.mark_line(color=color, strokeWidth=8, opacity=0.2, interpolate='monotone')
     line = base.mark_line(color=color, strokeWidth=3, interpolate='monotone')
-    area = base.mark_area(color=alt.Gradient(gradient='linear', stops=[alt.GradientStop(color, 0), alt.GradientStop('rgba(0,0,0,0)', 1)], x1=1, x2=1, y1=1, y2=0), opacity=0.2, interpolate='monotone')
     
+    # 5. POINTS (Interactive)
     nearest = alt.selection(type='single', nearest=True, on='mouseover', fields=['Date'], empty='none')
-    points = base.mark_circle(size=80, fill='#000000', stroke=color, strokeWidth=2).encode(opacity=alt.condition(nearest, alt.value(1), alt.value(0))).add_selection(nearest)
+    points = base.mark_circle(size=80, fill='#000000', stroke=color, strokeWidth=2).encode(
+        opacity=alt.condition(nearest, alt.value(1), alt.value(0))
+    ).add_selection(nearest)
     
     tooltips = base.mark_circle(opacity=0).encode(tooltip=[alt.Tooltip('Date:T', format='%d %b %Y'), alt.Tooltip('NumericValue:Q', title=marker)])
 
+    # 6. INTERVENTIONS (Red Dotted Lines, No Circle)
     ev_layer = None
     if not events.empty:
-        ev_rule = alt.Chart(events).mark_rule(color='#F97316', strokeWidth=2, strokeDash=[4,4]).encode(x='Date:T')
-        ev_bub = alt.Chart(events).mark_point(filled=True, fill='#09090B', stroke='#F97316', size=1500, shape='circle').encode(x='Date:T', y=alt.value(30))
-        ev_txt = alt.Chart(events).mark_text(color='#F97316', fontSize=10, fontWeight=700).encode(x='Date:T', y=alt.value(30), text='Event')
-        ev_layer = ev_rule + ev_bub + ev_txt
+        # Red Dotted Line
+        ev_rule = alt.Chart(events).mark_rule(
+            color='#EF4444',      # Red
+            strokeDash=[4, 4],    # Dotted
+            strokeWidth=2,
+            opacity=0.9
+        ).encode(x='Date:T')
+        
+        # Text Label (Red)
+        ev_txt = alt.Chart(events).mark_text(
+            align='center', baseline='bottom', dy=-5,
+            color='#EF4444', font='JetBrains Mono', fontSize=10, fontWeight=700
+        ).encode(x='Date:T', y=alt.value(15), text='Event')
+        
+        ev_layer = ev_rule + ev_txt
 
-    final = glow + area + line + points + tooltips
-    if danger_low: final = danger_low + final
-    if danger_high: final = danger_high + final
-    if ev_layer: final = final + ev_layer
+    # Assemble
+    layers = []
+    if danger_low: layers.append(danger_low)
+    if optimal_band: layers.append(optimal_band)
+    if danger_high: layers.append(danger_high)
     
-    return final.properties(height=300, background='transparent').configure_view(strokeWidth=0)
+    layers.extend([blood_dates, glow, line, points, tooltips])
+    
+    if ev_layer: layers.append(ev_layer)
+
+    return alt.layer(*layers).properties(height=300, background='transparent').configure_view(strokeWidth=0)
 
 # --- 7. UI LOGIC ---
 master, results, events, status = load_data()
@@ -316,7 +348,6 @@ st.markdown("""<div style="display:flex; justify-content:space-between; align-it
 
 if status != "OK":
     st.error(f"⚠️ System Offline: {status}")
-    st.info("Check your 'service_account.json' or Streamlit Secrets.")
     st.stop()
 
 nav = st.radio("NAV", ["DASHBOARD", "TREND ANALYSIS", "PROTOCOL LOG", "DATA TOOLS"], horizontal=True, label_visibility="collapsed")
@@ -326,10 +357,8 @@ if nav == "DASHBOARD":
     dates = sorted(results['Date'].dropna().unique(), reverse=True)
     sel_date = st.selectbox("REPORT DATE", [d.strftime('%d %b %Y').upper() for d in dates])
     
-    # Filter
     subset = results[results['Date'].dt.strftime('%d %b %Y').str.upper() == sel_date].copy()
     
-    # Process
     rows, counts = [], {1:0, 2:0, 3:0, 4:0}
     for _, r in subset.iterrows():
         m_row = fuzzy_match(r['Marker'], master)
@@ -338,7 +367,6 @@ if nav == "DASHBOARD":
             if prio in counts: counts[prio] += 1
             rows.append({'Marker': m_row['Biomarker'], 'Value': r['Value'], 'Status': stat, 'Color': col, 'Prio': prio})
     
-    # HUD
     st.markdown(f"""<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(120px, 1fr)); gap:10px; margin-bottom:20px;">
         <div class="hud-card"><div class="hud-val" style="color:#FAFAFA">{len(rows)}</div><div class="hud-label">TESTED</div></div>
         <div class="hud-card"><div class="hud-val" style="color:#007AFF">{counts[3]}</div><div class="hud-label">OPTIMAL</div></div>
@@ -347,7 +375,6 @@ if nav == "DASHBOARD":
         <div class="hud-card"><div class="hud-val" style="color:#FF3B30">{counts[1]}</div><div class="hud-label">ACTION</div></div>
     </div>""", unsafe_allow_html=True)
 
-    # Lists
     c1, c2 = st.columns(2)
     with c1:
         st.markdown('<div class="section-header">Attention Required</div>', unsafe_allow_html=True)
