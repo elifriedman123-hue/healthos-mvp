@@ -22,7 +22,6 @@ st.markdown("""
     [data-testid="stHeader"] { display: none; }
     .block-container { padding-top: 2rem; padding-bottom: 5rem; }
     
-    /* NAV BAR */
     div[role="radiogroup"] { background-color: #09090B; padding: 4px; border-radius: 12px; border: 1px solid #27272A; }
     div[role="radiogroup"] label { background-color: transparent; border: 1px solid transparent; border-radius: 8px; }
     div[role="radiogroup"] label:hover { background-color: #18181B; }
@@ -30,12 +29,10 @@ st.markdown("""
     div[role="radiogroup"] label > div[data-testid="stMarkdownContainer"] > p { font-family: 'JetBrains Mono'; font-size: 11px; color: #52525B; letter-spacing: 1.5px; }
     div[role="radiogroup"] label[data-checked="true"] > div[data-testid="stMarkdownContainer"] > p { color: #FAFAFA; }
 
-    /* CARDS */
     .hud-card { background: linear-gradient(180deg, rgba(24, 24, 27, 0.4) 0%, rgba(9, 9, 11, 0.4) 100%); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 16px; padding: 20px; text-align: center; }
     .hud-val { font-family: 'JetBrains Mono'; font-size: 32px; font-weight: 700; color: #FAFAFA; letter-spacing: -1.5px; }
     .hud-label { font-family: 'JetBrains Mono'; font-size: 10px; letter-spacing: 1.5px; color: #52525B; margin-top: 8px; font-weight: 700; text-transform: uppercase; }
 
-    /* ROWS */
     .clinical-row { background: rgba(15, 15, 17, 0.6); border-left: 2px solid #333; padding: 16px 20px; margin-bottom: 8px; border-radius: 0 8px 8px 0; border: 1px solid rgba(255,255,255,0.02); display: flex; justify-content: space-between; align-items: center; }
     .c-marker { font-family: 'Inter'; font-weight: 500; font-size: 14px; color: #D4D4D8; }
     .c-sub { font-size: 11px; color: #52525B; margin-top: 4px; font-family: 'JetBrains Mono'; }
@@ -47,7 +44,6 @@ st.markdown("""
 
 # --- 3. DATA ENGINE ---
 SHEET_NAME = "HealthOS_DB"
-MASTER_FILE_LOCAL = "Biomarker_Master_Elite.csv"
 
 def get_google_sheet_client():
     scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
@@ -68,7 +64,7 @@ def get_google_sheet_client():
         except: return None
     return None
 
-# --- ROBUST CLEANERS ---
+# --- CLEANERS ---
 def clean_numeric_value(val):
     if pd.isna(val) or str(val).strip() == "": return None
     s = str(val).strip().replace(',', '').replace(' ', '')
@@ -92,7 +88,7 @@ def parse_flexible_date(date_str):
         except: continue
     return pd.to_datetime(date_str, errors='coerce')
 
-# --- LOAD & SELF-HEAL ---
+# --- LOAD DATA ---
 @st.cache_data(ttl=5)
 def load_data():
     master = pd.DataFrame()
@@ -120,15 +116,12 @@ def load_data():
             if len(data) > 1:
                 results = pd.DataFrame(data[1:], columns=data[0])
                 results.columns = [c.strip() for c in results.columns] 
-                
                 results['DateObj'] = results['Date'].apply(parse_flexible_date)
                 results['CleanMarker'] = results['Marker'].apply(clean_marker_name)
                 results['NumericValue'] = results['Value'].apply(clean_numeric_value)
-                
-                # FINGERPRINT & DEDUPLICATE
+                # Deduplicate
                 results['Fingerprint'] = results['DateObj'].astype(str) + "_" + results['CleanMarker'] + "_" + results['NumericValue'].astype(str)
                 results = results.drop_duplicates(subset=['Fingerprint'], keep='last')
-                
                 results['Date'] = results['DateObj']
         except: pass
 
@@ -177,7 +170,7 @@ def process_csv_upload(uploaded_file):
     try:
         try: df_new = pd.read_csv(uploaded_file)
         except: uploaded_file.seek(0); df_new = pd.read_csv(uploaded_file, encoding='ISO-8859-1')
-            
+        
         col_map = {c: c.lower() for c in df_new.columns}
         df_new.columns = df_new.columns.str.lower()
         rename_dict = {}
@@ -206,8 +199,6 @@ def process_csv_upload(uploaded_file):
             existing = pd.DataFrame(columns=db_cols)
 
         combined = pd.concat([existing, df_new], ignore_index=True)
-        
-        # Deduplication
         combined['clean_date'] = combined['Date'].apply(parse_flexible_date).astype(str)
         combined['clean_marker'] = combined['Marker'].apply(clean_marker_name)
         combined['clean_val'] = combined['Value'].apply(clean_numeric_value).astype(str)
@@ -215,11 +206,9 @@ def process_csv_upload(uploaded_file):
         
         final = combined.drop_duplicates(subset=['fingerprint'], keep='last')
         final = final[db_cols] 
-        
         ws.clear()
         ws.append_row(db_cols)
         ws.append_rows(final.astype(str).values.tolist())
-        
         st.cache_data.clear()
         return "Success"
     except Exception as e: return f"Error: {str(e)}"
@@ -251,76 +240,92 @@ def get_status(val, master_row):
         except: o_min, o_max = 0, 0
         
         if "PSA" in str(master_row['Biomarker']).upper() and val > 4: return "OUT OF RANGE", "#FF3B30", 1
-        
         if s_min > 0 and (val < s_min or val > s_max): return "OUT OF RANGE", "#FF3B30", 1
         if (o_min > 0 and val < o_min) or (o_max > 0 and val > o_max): return "BORDERLINE", "#FF9500", 2
         if (o_min > 0 or o_max > 0): return "OPTIMAL", "#007AFF", 3
         return "IN RANGE", "#34C759", 4
     except: return "ERROR", "#8E8E93", 5
 
-# --- CHARTING (RED BOX + DOTTED BORDER) ---
+# --- CHARTING (ROBUST BOX) ---
 def plot_chart(marker, results, events, master):
     df = results[results['CleanMarker'] == clean_marker_name(marker)].copy()
     df = df.dropna(subset=['NumericValue', 'Date']).sort_values('Date')
     if df.empty: return None
 
+    # Calculate Data Range for Dynamic Box Width
+    min_date = df['Date'].min()
+    max_date = df['Date'].max()
+    date_span = (max_date - min_date).days
+    if date_span < 10: date_span = 30 # Minimum visual span
+    
+    # Range
     min_val, max_val = 0, 0
     m_row = fuzzy_match(marker, master)
     if m_row is not None: min_val, max_val = parse_range(m_row['Standard Range'])
-    
     d_max = df['NumericValue'].max()
     y_top = max(d_max, max_val) * 1.2
 
-    # 1. BASE
+    # Base
     base = alt.Chart(df).encode(
         x=alt.X('Date:T', axis=alt.Axis(format='%d %b %y', labelColor='#71717A', tickColor='#27272A', domain=False, grid=False)),
         y=alt.Y('NumericValue:Q', scale=alt.Scale(domain=[0, y_top]), axis=alt.Axis(labelColor='#71717A', tickColor='#27272A', domain=False, gridColor='#27272A', gridOpacity=0.2))
     )
 
-    # 2. ZONED SHADING
+    # Zones
     danger_low = alt.Chart(pd.DataFrame({'y':[0], 'y2':[min_val]})).mark_rect(color='#EF4444', opacity=0.1).encode(y='y', y2='y2') if min_val>0 else None
     optimal_band = alt.Chart(pd.DataFrame({'y':[min_val], 'y2':[max_val]})).mark_rect(color='#10B981', opacity=0.1).encode(y='y', y2='y2') if max_val>0 else None
     danger_high = alt.Chart(pd.DataFrame({'y':[max_val], 'y2':[y_top]})).mark_rect(color='#EF4444', opacity=0.1).encode(y='y', y2='y2') if max_val>0 else None
-
-    # 3. BLOOD TEST DATES (Blue Dotted)
+    
+    # Blood Dates (Blue)
     blood_dates = base.mark_rule(color='#38BDF8', strokeDash=[2, 2], strokeWidth=1, opacity=0.3).encode(x='Date:T')
 
-    # 4. LINE & POINTS
+    # Line
     color = '#38BDF8'
     glow = base.mark_line(color=color, strokeWidth=8, opacity=0.2, interpolate='monotone')
     line = base.mark_line(color=color, strokeWidth=3, interpolate='monotone')
-    
     nearest = alt.selection(type='single', nearest=True, on='mouseover', fields=['Date'], empty='none')
     points = base.mark_circle(size=80, fill='#000000', stroke=color, strokeWidth=2).encode(opacity=alt.condition(nearest, alt.value(1), alt.value(0))).add_selection(nearest)
     tooltips = base.mark_circle(opacity=0).encode(tooltip=[alt.Tooltip('Date:T', format='%d %b %Y'), alt.Tooltip('NumericValue:Q', title=marker)])
 
-    # 5. INTERVENTIONS (Dotted Box + Line)
+    # Events (Red Box & Text)
     ev_layer = None
     if not events.empty:
-        # Vertical Line
+        # Pre-calc box dimensions to ensure it's a rectangle
+        # Width = 10% of total chart time span
+        box_width_days = max(2, int(date_span * 0.12))
+        
+        events_calc = events.copy()
+        events_calc['start'] = events_calc['Date'] - pd.to_timedelta(box_width_days/2, unit='D')
+        events_calc['end'] = events_calc['Date'] + pd.to_timedelta(box_width_days/2, unit='D')
+        
+        # Vertical Dotted Line
         ev_rule = alt.Chart(events).mark_rule(
             color='#EF4444', strokeWidth=2, strokeDash=[4, 4], opacity=0.8
         ).encode(x='Date:T')
         
-        # The Black Box with Red Dotted Border
-        ev_box = alt.Chart(events).mark_point(
-            shape="rect",
-            size=6000, # Increased Size for Visibility
+        # The Black Rectangle (Using mark_rect for guaranteed shape)
+        ev_box = alt.Chart(events_calc).mark_rect(
             fill="#000000",
             stroke="#EF4444",
-            strokeDash=[4, 4],
-            strokeWidth=2
-        ).encode(x='Date:T', y=alt.value(35)) # Moved Down
+            strokeDash=[2, 2],
+            strokeWidth=2,
+            opacity=1
+        ).encode(
+            x='start:T',
+            x2='end:T',
+            y=alt.value(15),  # Top pixel coord
+            y2=alt.value(45)  # Bottom pixel coord (30px height)
+        )
         
-        # The Text
+        # Text on top
         ev_txt = alt.Chart(events).mark_text(
             align='center', baseline='middle',
-            color='#EF4444', font='JetBrains Mono', fontSize=11, fontWeight=700, dy=0
-        ).encode(x='Date:T', y=alt.value(35), text='Event')
+            color='#EF4444', font='JetBrains Mono', fontSize=11, fontWeight=700
+        ).encode(x='Date:T', y=alt.value(30), text='Event') # Middle of box
         
         ev_layer = ev_rule + ev_box + ev_txt
 
-    # 6. ASSEMBLE
+    # Assemble (Order matters for Z-index)
     layers = []
     if danger_low: layers.append(danger_low)
     if optimal_band: layers.append(optimal_band)
@@ -330,7 +335,7 @@ def plot_chart(marker, results, events, master):
 
     return alt.layer(*layers).properties(height=300, background='transparent').configure_view(strokeWidth=0)
 
-# --- 7. UI LOGIC ---
+# --- 7. UI ---
 master, results, events, status = load_data()
 
 # HEADER
@@ -348,9 +353,7 @@ if nav == "DASHBOARD":
     if results.empty: st.info("No Data."); st.stop()
     dates = sorted(results['Date'].dropna().unique(), reverse=True)
     sel_date = st.selectbox("REPORT DATE", [d.strftime('%d %b %Y').upper() for d in dates])
-    
     subset = results[results['Date'].dt.strftime('%d %b %Y').str.upper() == sel_date].copy()
-    
     rows, counts = [], {1:0, 2:0, 3:0, 4:0}
     for _, r in subset.iterrows():
         m_row = fuzzy_match(r['Marker'], master)
