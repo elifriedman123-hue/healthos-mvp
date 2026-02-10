@@ -12,8 +12,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed" 
 )
 
-# --- 2. SESSION STATE DATABASE (The Fix) ---
-# This replaces Google Sheets. Data lives in memory for the demo.
+# --- 2. SESSION STATE (The Database) ---
 if 'data' not in st.session_state:
     st.session_state['data'] = pd.DataFrame(columns=['Date', 'Marker', 'Value', 'Unit'])
 if 'events' not in st.session_state:
@@ -47,7 +46,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- 4. DATA LOGIC ---
+# --- 4. CLEANERS ---
 def clean_numeric_value(val):
     if pd.isna(val) or str(val).strip() == "": return None
     s = str(val).strip().replace(',', '').replace(' ', '')
@@ -71,22 +70,20 @@ def parse_flexible_date(date_str):
         except: continue
     return pd.to_datetime(date_str, errors='coerce')
 
-def process_data_for_app():
-    # 1. Get from Session
+# --- 5. DATA LOGIC (NO CACHE) ---
+# NOTE: Removed @st.cache_data to prevent "stuck" empty states
+def get_data():
     results = st.session_state['data'].copy()
-    if results.empty: return pd.DataFrame(), pd.DataFrame()
-    
-    # 2. Clean
-    results['Date'] = results['Date'].apply(parse_flexible_date)
-    results['CleanMarker'] = results['Marker'].apply(clean_marker_name)
-    results['NumericValue'] = results['Value'].apply(clean_numeric_value)
-    
-    # 3. Deduplicate (The "Self-Healing" Logic)
-    results['Fingerprint'] = results['Date'].astype(str) + "_" + results['CleanMarker'] + "_" + results['NumericValue'].astype(str)
-    results = results.drop_duplicates(subset=['Fingerprint'], keep='last')
-    
-    # 4. Events
     events = st.session_state['events'].copy()
+    
+    if not results.empty:
+        results['Date'] = results['Date'].apply(parse_flexible_date)
+        results['CleanMarker'] = results['Marker'].apply(clean_marker_name)
+        results['NumericValue'] = results['Value'].apply(clean_numeric_value)
+        # Deduplicate
+        results['Fingerprint'] = results['Date'].astype(str) + "_" + results['CleanMarker'] + "_" + results['NumericValue'].astype(str)
+        results = results.drop_duplicates(subset=['Fingerprint'], keep='last')
+    
     if not events.empty:
         events['Date'] = events['Date'].apply(parse_flexible_date)
         
@@ -97,7 +94,7 @@ def process_upload(uploaded_file):
         try: df_new = pd.read_csv(uploaded_file)
         except: uploaded_file.seek(0); df_new = pd.read_csv(uploaded_file, encoding='ISO-8859-1')
         
-        # Normalize
+        # Column Mapping
         col_map = {c: c.lower() for c in df_new.columns}
         df_new.columns = df_new.columns.str.lower()
         rename_dict = {}
@@ -108,22 +105,26 @@ def process_upload(uploaded_file):
             elif c in ['unit', 'units']: rename_dict[c] = 'Unit'
         df_new = df_new.rename(columns=rename_dict)
         
-        # Keep only needed columns
+        # Ensure Columns
         needed = ['Date', 'Marker', 'Value', 'Unit']
         for c in needed: 
             if c not in df_new.columns: df_new[c] = ""
         df_new = df_new[needed]
         
-        # Update Session
+        # Append to Session State
         st.session_state['data'] = pd.concat([st.session_state['data'], df_new], ignore_index=True)
         return "Success", len(df_new)
     except Exception as e: return f"Error: {str(e)}", 0
 
-def add_event(date, name, type, note):
+def add_clinical_event(date, name, type, note):
     new_event = pd.DataFrame([{"Date": str(date), "Event": name, "Type": type, "Notes": note}])
     st.session_state['events'] = pd.concat([st.session_state['events'], new_event], ignore_index=True)
 
-# --- 5. MASTER RANGES (Embedded) ---
+def wipe_db():
+    st.session_state['data'] = pd.DataFrame(columns=['Date', 'Marker', 'Value', 'Unit'])
+    st.session_state['events'] = pd.DataFrame(columns=['Date', 'Event', 'Type', 'Notes'])
+
+# --- 6. MASTER RANGES ---
 def get_master_data():
     data = [
         ["Biomarker", "Standard Range", "Optimal Min", "Optimal Max", "Unit", "Fuzzy Match Keywords"],
@@ -136,7 +137,7 @@ def get_master_data():
     ]
     return pd.DataFrame(data[1:], columns=data[0])
 
-# --- 6. UTILS ---
+# --- 7. HELPERS ---
 def fuzzy_match(marker, master):
     lab_clean = clean_marker_name(marker)
     for _, row in master.iterrows():
@@ -165,7 +166,7 @@ def get_status(val, master_row):
         return "IN RANGE", "#34C759", 4
     except: return "ERROR", "#8E8E93", 5
 
-# --- 7. CHARTING (SMART STAGGER + BOX) ---
+# --- 8. CHART ENGINE (STAGGERED) ---
 def calculate_stagger(events_df, days_threshold=20):
     if events_df.empty: return events_df
     events_df = events_df.sort_values('Date').copy()
@@ -241,11 +242,10 @@ def plot_chart(marker, results, events, master):
 
     return alt.layer(*layers).properties(height=300, background='transparent').configure_view(strokeWidth=0)
 
-# --- 8. MAIN UI ---
+# --- 9. UI ---
 master = get_master_data()
-results, events = process_data_for_app()
+results, events = get_data()
 
-# Header
 st.markdown("""<div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #333; padding-bottom:10px; margin-bottom:10px;">
     <div><h2 style="margin:0; font-family:'Inter'; font-weight:700; letter-spacing:-1px;">HealthOS <span style="color:#71717A;">PRO</span></h2></div>
     <div><span class="tag" style="background:#064E3B; color:#34D399; border:1px solid #059669;">PATIENT: DEMO</span></div></div>""", unsafe_allow_html=True)
@@ -254,11 +254,9 @@ nav = st.radio("NAV", ["DASHBOARD", "TREND ANALYSIS", "PROTOCOL LOG", "DATA TOOL
 
 if nav == "DASHBOARD":
     if results.empty: st.info("No Data loaded. Go to 'DATA TOOLS' to upload CSV."); st.stop()
-    
     dates = sorted(results['Date'].dropna().unique(), reverse=True)
     sel_date = st.selectbox("REPORT DATE", [d.strftime('%d %b %Y').upper() for d in dates])
     subset = results[results['Date'].dt.strftime('%d %b %Y').str.upper() == sel_date].copy()
-    
     rows, counts = [], {1:0, 2:0, 3:0, 4:0}
     for _, r in subset.iterrows():
         m_row = fuzzy_match(r['Marker'], master)
@@ -309,7 +307,7 @@ elif nav == "PROTOCOL LOG":
         with c2: n = st.text_input("Event Name")
         with c3: t = st.selectbox("Type", ["Medication", "Lifestyle", "Procedure"])
         if st.form_submit_button("Add Event"):
-            add_event(d, n, t, "")
+            add_clinical_event(d, n, t, "")
             st.success("Added"); st.rerun()
     if not events.empty: st.dataframe(events, use_container_width=True)
 
@@ -323,6 +321,5 @@ elif nav == "DATA TOOLS":
         
     st.markdown("---")
     if st.button("⚠️ WIPE SESSION"):
-        st.session_state['data'] = pd.DataFrame(columns=['Date', 'Marker', 'Value', 'Unit'])
-        st.session_state['events'] = pd.DataFrame(columns=['Date', 'Event', 'Type', 'Notes'])
+        wipe_db()
         st.warning("Wiped."); st.rerun()
