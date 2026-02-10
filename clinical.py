@@ -6,6 +6,7 @@ import altair as alt
 import re
 import os
 from difflib import SequenceMatcher
+from io import StringIO
 
 # --- 1. CONFIGURATION ---
 st.set_page_config(
@@ -141,7 +142,7 @@ def load_data():
     except Exception as e: 
         return master, results, events, str(e)
 
-# --- WRITE OPS ---
+# --- WRITE OPS (WITH CACHE CLEAR) ---
 def add_clinical_event(date, event_name, event_type, notes):
     client = get_google_sheet_client()
     if not client: return
@@ -150,7 +151,7 @@ def add_clinical_event(date, event_name, event_type, notes):
         try: ws = sh.worksheet("Events")
         except: ws = sh.add_worksheet("Events", 1000, 5)
         ws.append_row([str(date), event_name, event_type, notes])
-        st.cache_data.clear()
+        st.cache_data.clear() # CRITICAL: Clear cache so update shows immediately
     except: pass
 
 def clear_data():
@@ -162,7 +163,7 @@ def clear_data():
         except: pass
         try: sh.worksheet("Events").clear(); sh.worksheet("Events").append_row(["Date", "Event", "Type", "Notes"])
         except: pass
-        st.cache_data.clear()
+        st.cache_data.clear() # CRITICAL
     except: pass
 
 def process_csv_upload(uploaded_file):
@@ -202,12 +203,15 @@ def process_csv_upload(uploaded_file):
         combined['clean_marker'] = combined['Marker'].apply(clean_marker_name)
         combined['clean_val'] = combined['Value'].apply(clean_numeric_value).astype(str)
         combined['fingerprint'] = combined['clean_date'] + combined['clean_marker'] + combined['clean_val']
+        
         final = combined.drop_duplicates(subset=['fingerprint'], keep='last')
         final = final[db_cols] 
+        
         ws.clear()
         ws.append_row(db_cols)
         ws.append_rows(final.astype(str).values.tolist())
-        st.cache_data.clear()
+        
+        st.cache_data.clear() # CRITICAL: Force refresh of data
         return "Success"
     except Exception as e: return f"Error: {str(e)}"
 
@@ -245,30 +249,22 @@ def get_status(val, master_row):
 
 # --- ALGORITHM: SMART STAGGER ---
 def calculate_stagger(events_df, days_threshold=20):
-    """Assigns vertical slots (0, 1, 2) to events to prevent overlap."""
     if events_df.empty: return events_df
-    
     events_df = events_df.sort_values('Date').copy()
     events_df['lane'] = 0
-    lane_end_dates = {} # {0: date, 1: date}
-
+    lane_end_dates = {}
     for idx, row in events_df.iterrows():
         current_date = row['Date']
         assigned = False
         lane = 0
         while not assigned:
-            last_date_in_lane = lane_end_dates.get(lane, pd.Timestamp.min)
-            # Check gap
-            gap = (current_date - last_date_in_lane).days
-            if gap > days_threshold:
-                # fits in this lane
+            last_date = lane_end_dates.get(lane, pd.Timestamp.min)
+            if (current_date - last_date).days > days_threshold:
                 events_df.at[idx, 'lane'] = lane
                 lane_end_dates[lane] = current_date
                 assigned = True
-            else:
-                lane += 1 # Try next lane down
-    
-    # Map Lane to Pixels (15px start, +30px per lane)
+            else: lane += 1
+    # Assign pixels based on lane
     events_df['y_top'] = 10 + (events_df['lane'] * 35)
     events_df['y_bottom'] = events_df['y_top'] + 25
     events_df['y_text'] = events_df['y_top'] + 12.5
@@ -280,13 +276,12 @@ def plot_chart(marker, results, events, master):
     df = df.dropna(subset=['NumericValue', 'Date']).sort_values('Date')
     if df.empty: return None
 
-    # Date Span for Box Width
-    min_date = df['Date'].min()
-    max_date = df['Date'].max()
+    # Calc Date Span
+    min_date, max_date = df['Date'].min(), df['Date'].max()
     date_span = (max_date - min_date).days
     if date_span < 10: date_span = 30
     
-    # Range
+    # Range & Limits
     min_val, max_val = 0, 0
     m_row = fuzzy_match(marker, master)
     if m_row is not None: min_val, max_val = parse_range(m_row['Standard Range'])
@@ -316,34 +311,14 @@ def plot_chart(marker, results, events, master):
     # STAGGERED EVENTS
     ev_layer = None
     if not events.empty:
-        # Apply Stagger Logic
         staggered_events = calculate_stagger(events, days_threshold=int(date_span*0.15))
-        
-        # Calc box width
         box_width_days = max(15, int(date_span * 0.12))
         staggered_events['start'] = staggered_events['Date'] - pd.to_timedelta(box_width_days/2, unit='D')
         staggered_events['end'] = staggered_events['Date'] + pd.to_timedelta(box_width_days/2, unit='D')
 
-        # Line
-        ev_rule = alt.Chart(staggered_events).mark_rule(
-            color='#EF4444', strokeWidth=1, strokeDash=[4, 4], opacity=0.5
-        ).encode(x='Date:T')
-        
-        # Box (Dynamic Y)
-        ev_box = alt.Chart(staggered_events).mark_rect(
-            fill="#000000", stroke="#EF4444", strokeDash=[2, 2], strokeWidth=2, opacity=1
-        ).encode(
-            x='start:T', x2='end:T',
-            y='y_top:Q', y2='y_bottom:Q'
-        )
-        
-        # Text (Dynamic Y)
-        ev_txt = alt.Chart(staggered_events).mark_text(
-            align='center', baseline='middle', color='#EF4444', font='JetBrains Mono', fontSize=10, fontWeight=700
-        ).encode(
-            x='Date:T', y='y_text:Q', text='Event'
-        )
-        
+        ev_rule = alt.Chart(staggered_events).mark_rule(color='#EF4444', strokeWidth=1, strokeDash=[4, 4], opacity=0.5).encode(x='Date:T')
+        ev_box = alt.Chart(staggered_events).mark_rect(fill="#000000", stroke="#EF4444", strokeDash=[2, 2], strokeWidth=2, opacity=1).encode(x='start:T', x2='end:T', y='y_top:Q', y2='y_bottom:Q')
+        ev_txt = alt.Chart(staggered_events).mark_text(align='center', baseline='middle', color='#EF4444', font='JetBrains Mono', fontSize=10, fontWeight=700).encode(x='Date:T', y='y_text:Q', text='Event')
         ev_layer = ev_rule + ev_box + ev_txt
 
     layers = []
@@ -353,7 +328,7 @@ def plot_chart(marker, results, events, master):
     layers.extend([blood_dates, glow, line, points, tooltips])
     if ev_layer: layers.append(ev_layer)
 
-    return alt.layer(*layers).properties(height=320, background='transparent').configure_view(strokeWidth=0)
+    return alt.layer(*layers).properties(height=300, background='transparent').configure_view(strokeWidth=0)
 
 # --- 7. UI ---
 master, results, events, status = load_data()
@@ -409,7 +384,9 @@ if nav == "DASHBOARD":
 elif nav == "TREND ANALYSIS":
     if results.empty: st.warning("No Data."); st.stop()
     markers = sorted(results['CleanMarker'].unique())
-    sel = st.multiselect("Select Biomarkers", markers, default=[m for m in ['TOTAL TESTOSTERONE', 'HAEMATOCRIT', 'PSA', 'FERRITIN'] if m in markers])
+    # Smart Defaults for the Story
+    defaults = [m for m in ['TOTAL TESTOSTERONE', 'HAEMATOCRIT', 'PSA', 'FERRITIN', 'LDL CHOLESTEROL'] if m in markers]
+    sel = st.multiselect("Select Biomarkers", markers, default=defaults)
     for m in sel:
         st.markdown(f"#### {m}")
         ch = plot_chart(m, results, events, master)
@@ -421,7 +398,7 @@ elif nav == "PROTOCOL LOG":
         c1, c2, c3 = st.columns([1,2,1])
         with c1: d = st.date_input("Date")
         with c2: n = st.text_input("Event Name")
-        with c3: t = st.selectbox("Type", ["Medication", "Lifestyle"])
+        with c3: t = st.selectbox("Type", ["Medication", "Lifestyle", "Procedure"])
         if st.form_submit_button("Add Event"):
             add_clinical_event(d, n, t, "")
             st.success("Added"); st.rerun()
@@ -430,10 +407,38 @@ elif nav == "PROTOCOL LOG":
 elif nav == "DATA TOOLS":
     st.markdown('<div class="section-header">Data Pipeline</div>', unsafe_allow_html=True)
     up = st.file_uploader("Upload CSV", type=['csv'])
-    if up and st.button("Process"):
+    if up and st.button("Process Batch"):
         msg = process_csv_upload(up)
         if msg=="Success": st.success("Done"); st.rerun()
         else: st.error(msg)
+        
+    st.markdown("---")
+    # Backup Button
+    if st.button("🚀 LOAD 'CLINICAL THRILLER' STORY"):
+        story_csv = """Date,Marker,Value,Unit
+2023-01-15,Total Testosterone,240,ng/dL
+2023-01-15,Haematocrit,42,%
+2023-01-15,Oestradiol,18,pg/mL
+2023-01-15,LDL Cholesterol,145,mg/dL
+2023-05-10,Total Testosterone,1550,ng/dL
+2023-05-10,Haematocrit,54,%
+2023-05-10,Oestradiol,85,pg/mL
+2023-05-10,LDL Cholesterol,138,mg/dL
+2023-07-20,Total Testosterone,950,ng/dL
+2023-07-20,Haematocrit,48,%
+2023-07-20,Oestradiol,42,pg/mL
+2023-10-15,Total Testosterone,850,ng/dL
+2023-10-15,Haematocrit,45,%
+2023-10-15,Oestradiol,28,pg/mL
+2023-10-15,LDL Cholesterol,95,mg/dL"""
+        clear_data()
+        process_csv_upload(StringIO(story_csv))
+        add_clinical_event("2023-02-01", "Started TRT (200mg)", "Medication", "")
+        add_clinical_event("2023-05-12", "Phlebotomy (High HCT)", "Procedure", "")
+        add_clinical_event("2023-05-15", "Reduced Dose (120mg)", "Medication", "")
+        add_clinical_event("2023-06-01", "Cardio Protocol", "Lifestyle", "")
+        st.success("Story Loaded!"); st.rerun()
+
     if st.button("⚠️ WIPE DATABASE"):
         clear_data()
         st.warning("Wiped."); st.rerun()
