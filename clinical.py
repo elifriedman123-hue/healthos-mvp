@@ -18,7 +18,7 @@ if 'data' not in st.session_state:
 if 'events' not in st.session_state:
     st.session_state['events'] = pd.DataFrame(columns=['Date', 'Event', 'Type', 'Notes'])
 
-# --- 3. STYLING ---
+# --- 3. UI STYLING ---
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap');
@@ -98,12 +98,11 @@ def process_upload(uploaded_file):
         with st.expander("🔍 Debug: View Raw Upload", expanded=True):
             st.dataframe(df_new.head())
 
-        # Normalize Columns (THE FIX: Added 'marker' to the list)
+        # Normalize Columns
         df_new.columns = df_new.columns.str.strip().str.lower()
         
         rename_dict = {}
         for c in df_new.columns:
-            # FIXED: Added 'marker' to this list so it catches your column
             if any(x in c for x in ['marker', 'biomarker', 'test', 'name', 'analyte']): rename_dict[c] = 'Marker'
             elif any(x in c for x in ['result', 'reading', 'value', 'concentration']): rename_dict[c] = 'Value'
             elif any(x in c for x in ['time', 'collected', 'date']): rename_dict[c] = 'Date'
@@ -183,17 +182,22 @@ def calculate_stagger(events_df, days_threshold=20):
     events_df = events_df.sort_values('Date').copy()
     events_df['lane'] = 0
     lane_end_dates = {}
+    
+    # SAFE START DATE (THE FIX: 1900 instead of Min)
+    safe_min_date = pd.Timestamp("1900-01-01")
+    
     for idx, row in events_df.iterrows():
         current_date = row['Date']
         assigned = False
         lane = 0
         while not assigned:
-            last_date = lane_end_dates.get(lane, pd.Timestamp.min)
+            last_date = lane_end_dates.get(lane, safe_min_date) # <-- FIXED HERE
             if (current_date - last_date).days > days_threshold:
                 events_df.at[idx, 'lane'] = lane
                 lane_end_dates[lane] = current_date
                 assigned = True
             else: lane += 1
+            
     events_df['y_top'] = 10 + (events_df['lane'] * 35)
     events_df['y_bottom'] = events_df['y_top'] + 25
     events_df['y_text'] = events_df['y_top'] + 12.5
