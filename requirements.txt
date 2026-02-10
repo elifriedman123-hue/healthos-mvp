@@ -1,8 +1,5 @@
 streamlit
 pandas
+altair
 gspread
 oauth2client
-altair
-
-google-generativeai
-streamlit-echarts
