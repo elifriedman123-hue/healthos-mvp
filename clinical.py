@@ -78,6 +78,7 @@ def get_data():
         results['Date'] = results['Date'].apply(parse_flexible_date)
         results['CleanMarker'] = results['Marker'].apply(clean_marker_name)
         results['NumericValue'] = results['Value'].apply(clean_numeric_value)
+        # Deduplicate using Fingerprint
         results['Fingerprint'] = results['Date'].astype(str) + "_" + results['CleanMarker'] + "_" + results['NumericValue'].astype(str)
         results = results.drop_duplicates(subset=['Fingerprint'], keep='last')
     
@@ -138,15 +139,29 @@ def get_master_data():
     ]
     return pd.DataFrame(data[1:], columns=data[0])
 
-# --- 6. UTILS ---
+# --- 6. UTILS (BEST SCORE MATCHING) ---
 def fuzzy_match(marker, master):
     lab_clean = clean_marker_name(marker)
+    
+    # 1. Exact Check First
+    for _, row in master.iterrows():
+        keywords = [clean_marker_name(k) for k in str(row['Fuzzy Match Keywords']).split(",")]
+        if lab_clean in keywords: return row
+    
+    # 2. Best Score Wins (Winner-Takes-All)
+    best_score = 0
+    best_row = None
+    
     for _, row in master.iterrows():
         keywords = [clean_marker_name(k) for k in str(row['Fuzzy Match Keywords']).split(",")]
         for key in keywords:
-            if key == lab_clean: return row
-            if SequenceMatcher(None, lab_clean, key).ratio() > 0.6: return row
-    return None
+            score = SequenceMatcher(None, lab_clean, key).ratio()
+            if score > best_score:
+                best_score = score
+                best_row = row
+    
+    # Strict Threshold
+    return best_row if best_score > 0.85 else None
 
 def parse_range(range_str):
     if pd.isna(range_str): return 0,0
@@ -167,7 +182,7 @@ def get_status(val, master_row):
         return "IN RANGE", "#34C759", 4
     except: return "ERROR", "#8E8E93", 5
 
-# --- 7. CHART ENGINE (FLATTENED LAYERS) ---
+# --- 7. CHART ENGINE ---
 def calculate_stagger(events_df, days_threshold=20):
     if events_df.empty: return events_df
     events_df = events_df.sort_values('Date').copy()
@@ -185,7 +200,6 @@ def calculate_stagger(events_df, days_threshold=20):
                 lane_end_dates[lane] = current_date
                 assigned = True
             else: lane += 1
-    # Scale 0-10
     events_df['y_top'] = 9.5 - (events_df['lane'] * 1.5)
     events_df['y_bottom'] = events_df['y_top'] - 1.0
     events_df['y_text'] = events_df['y_top'] - 0.5
@@ -206,13 +220,12 @@ def plot_chart(marker, results, events, master):
     d_max = df['NumericValue'].max()
     y_top = max(d_max, max_val) * 1.2
 
-    # 1. DATA LAYERS (Use "y" scale)
+    # --- LAYER 1: DATA (Dynamic Scale) ---
     base = alt.Chart(df).encode(
         x=alt.X('Date:T', axis=alt.Axis(format='%b %y', labelColor='#71717A', tickColor='#27272A', domain=False, grid=False)),
         y=alt.Y('NumericValue:Q', scale=alt.Scale(domain=[0, y_top]), axis=alt.Axis(labelColor='#71717A', tickColor='#27272A', domain=False, gridColor='#27272A', gridOpacity=0.2))
     )
 
-    # Zones
     danger_low = alt.Chart(pd.DataFrame({'y':[0], 'y2':[min_val]})).mark_rect(color='#EF4444', opacity=0.1).encode(y='y', y2='y2') if min_val>0 else None
     optimal_band = alt.Chart(pd.DataFrame({'y':[min_val], 'y2':[max_val]})).mark_rect(color='#10B981', opacity=0.1).encode(y='y', y2='y2') if max_val>0 else None
     danger_high = alt.Chart(pd.DataFrame({'y':[max_val], 'y2':[y_top]})).mark_rect(color='#EF4444', opacity=0.1).encode(y='y', y2='y2') if max_val>0 else None
@@ -226,28 +239,27 @@ def plot_chart(marker, results, events, master):
     points = base.mark_circle(size=80, fill='#000000', stroke='#38BDF8', strokeWidth=2).encode(opacity=alt.condition(nearest, alt.value(1), alt.value(0))).add_selection(nearest)
     tooltips = base.mark_circle(opacity=0).encode(tooltip=[alt.Tooltip('Date:T', format='%d %b %Y'), alt.Tooltip('NumericValue:Q', title=marker)])
 
-    layers = []
-    if danger_low: layers.append(danger_low)
-    if optimal_band: layers.append(optimal_band)
-    if danger_high: layers.append(danger_high)
-    layers.extend([blood_dates, glow, line, points, tooltips])
+    data_layer_items = []
+    if danger_low: data_layer_items.append(danger_low)
+    if optimal_band: data_layer_items.append(optimal_band)
+    if danger_high: data_layer_items.append(danger_high)
+    data_layer_items.extend([blood_dates, glow, line, points, tooltips])
+    
+    if not events.empty:
+        ev_rule = alt.Chart(events).mark_rule(color='#EF4444', strokeWidth=1, strokeDash=[4, 4], opacity=0.5).encode(
+            x='Date:T', y=alt.value(0), y2=alt.value(350)
+        )
+        data_layer_items.append(ev_rule)
 
-    # 2. EVENT LAYERS (Independent Scale)
+    main_layer = alt.layer(*data_layer_items)
+
+    # --- LAYER 2: ANNOTATIONS (Fixed Scale) ---
     if not events.empty:
         staggered_events = calculate_stagger(events, days_threshold=int(date_span*0.15))
         box_width_days = max(15, int(date_span * 0.12))
         staggered_events['start'] = staggered_events['Date'] - pd.to_timedelta(box_width_days/2, unit='D')
         staggered_events['end'] = staggered_events['Date'] + pd.to_timedelta(box_width_days/2, unit='D')
 
-        # DOTTED LINES (Shared X, but independent Y for pixel perfection)
-        ev_rule = alt.Chart(staggered_events).mark_rule(color='#EF4444', strokeWidth=1, strokeDash=[4, 4], opacity=0.5).encode(
-            x='Date:T', 
-            y=alt.value(0), 
-            y2=alt.value(300)
-        )
-        layers.append(ev_rule)
-
-        # BOXES (Independent Y Scale 0-10)
         ev_box = alt.Chart(staggered_events).mark_rect(
             fill="#000000", stroke="#EF4444", strokeDash=[2, 2], strokeWidth=2, opacity=1
         ).encode(
@@ -256,7 +268,6 @@ def plot_chart(marker, results, events, master):
             y2=alt.Y('y_bottom:Q', scale=alt.Scale(domain=[0, 10]), axis=None)
         )
         
-        # TEXT (Independent Y Scale 0-10)
         ev_txt = alt.Chart(staggered_events).mark_text(
             align='center', baseline='middle', color='#EF4444', font='JetBrains Mono', fontSize=10, fontWeight=700
         ).encode(
@@ -265,10 +276,10 @@ def plot_chart(marker, results, events, master):
             text='Event'
         )
         
-        # WE MUST RETURN A LAYERED CHART WITH RESOLVE_SCALE
-        return alt.layer(*layers, ev_box, ev_txt).resolve_scale(y='independent').properties(height=320, background='transparent').configure_view(strokeWidth=0)
-
-    return alt.layer(*layers).properties(height=320, background='transparent').configure_view(strokeWidth=0)
+        annotation_layer = alt.layer(ev_box, ev_txt)
+        return alt.layer(main_layer, annotation_layer).resolve_scale(y='independent').properties(height=320, background='transparent').configure_view(strokeWidth=0)
+    
+    return main_layer.properties(height=320, background='transparent').configure_view(strokeWidth=0)
 
 # --- 8. UI ---
 master = get_master_data()
