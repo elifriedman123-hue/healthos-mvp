@@ -3,7 +3,6 @@ import pandas as pd
 import altair as alt
 import re
 from difflib import SequenceMatcher
-from io import StringIO
 
 # --- 1. CONFIGURATION ---
 st.set_page_config(
@@ -12,13 +11,13 @@ st.set_page_config(
     initial_sidebar_state="collapsed" 
 )
 
-# --- 2. SESSION STATE (The Database) ---
+# --- 2. SESSION STATE ---
 if 'data' not in st.session_state:
     st.session_state['data'] = pd.DataFrame(columns=['Date', 'Marker', 'Value', 'Unit'])
 if 'events' not in st.session_state:
     st.session_state['events'] = pd.DataFrame(columns=['Date', 'Event', 'Type', 'Notes'])
 
-# --- 3. UI STYLING ---
+# --- 3. STYLING ---
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap');
@@ -46,7 +45,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- 4. CLEANERS ---
+# --- 4. DATA LOGIC ---
 def clean_numeric_value(val):
     if pd.isna(val) or str(val).strip() == "": return None
     s = str(val).strip().replace(',', '').replace(' ', '')
@@ -70,8 +69,6 @@ def parse_flexible_date(date_str):
         except: continue
     return pd.to_datetime(date_str, errors='coerce')
 
-# --- 5. DATA LOGIC (NO CACHE) ---
-# NOTE: Removed @st.cache_data to prevent "stuck" empty states
 def get_data():
     results = st.session_state['data'].copy()
     events = st.session_state['events'].copy()
@@ -91,29 +88,46 @@ def get_data():
 
 def process_upload(uploaded_file):
     try:
-        try: df_new = pd.read_csv(uploaded_file)
-        except: uploaded_file.seek(0); df_new = pd.read_csv(uploaded_file, encoding='ISO-8859-1')
+        # UNIVERSAL READER: Auto-detect separator
+        try:
+            df_new = pd.read_csv(uploaded_file, sep=None, engine='python')
+        except:
+            uploaded_file.seek(0)
+            df_new = pd.read_csv(uploaded_file, encoding='ISO-8859-1')
         
-        # Column Mapping
-        col_map = {c: c.lower() for c in df_new.columns}
-        df_new.columns = df_new.columns.str.lower()
+        # DEBUG VIEW
+        with st.expander("🔍 Debug: View Raw Upload", expanded=True):
+            st.write("Columns Found:", df_new.columns.tolist())
+            st.dataframe(df_new.head())
+
+        # Normalize Columns
+        df_new.columns = df_new.columns.str.strip().str.lower()
+        
         rename_dict = {}
         for c in df_new.columns:
-            if c in ['biomarker', 'test', 'name', 'analyte']: rename_dict[c] = 'Marker'
-            elif c in ['result', 'reading', 'value', 'concentration']: rename_dict[c] = 'Value'
-            elif c in ['time', 'collected', 'date', 'date collected']: rename_dict[c] = 'Date'
-            elif c in ['unit', 'units']: rename_dict[c] = 'Unit'
+            if any(x in c for x in ['biomarker', 'test', 'name', 'analyte']): rename_dict[c] = 'Marker'
+            elif any(x in c for x in ['result', 'reading', 'value', 'concentration']): rename_dict[c] = 'Value'
+            elif any(x in c for x in ['time', 'collected', 'date']): rename_dict[c] = 'Date'
+            elif any(x in c for x in ['unit']): rename_dict[c] = 'Unit'
+
         df_new = df_new.rename(columns=rename_dict)
         
-        # Ensure Columns
-        needed = ['Date', 'Marker', 'Value', 'Unit']
-        for c in needed: 
-            if c not in df_new.columns: df_new[c] = ""
-        df_new = df_new[needed]
+        # Check if mapping worked
+        needed = ['Date', 'Marker', 'Value']
+        missing = [x for x in needed if x not in df_new.columns]
         
-        # Append to Session State
+        if missing:
+            return f"❌ Missing columns: {missing}. Found: {df_new.columns.tolist()}", 0
+
+        if 'Unit' not in df_new.columns: df_new['Unit'] = ""
+        
+        # Final cleanup
+        df_new = df_new[needed + ['Unit']]
+        
+        # Add to session
         st.session_state['data'] = pd.concat([st.session_state['data'], df_new], ignore_index=True)
         return "Success", len(df_new)
+
     except Exception as e: return f"Error: {str(e)}", 0
 
 def add_clinical_event(date, name, type, note):
@@ -124,7 +138,7 @@ def wipe_db():
     st.session_state['data'] = pd.DataFrame(columns=['Date', 'Marker', 'Value', 'Unit'])
     st.session_state['events'] = pd.DataFrame(columns=['Date', 'Event', 'Type', 'Notes'])
 
-# --- 6. MASTER RANGES ---
+# --- 5. MASTER RANGES ---
 def get_master_data():
     data = [
         ["Biomarker", "Standard Range", "Optimal Min", "Optimal Max", "Unit", "Fuzzy Match Keywords"],
@@ -137,7 +151,7 @@ def get_master_data():
     ]
     return pd.DataFrame(data[1:], columns=data[0])
 
-# --- 7. HELPERS ---
+# --- 6. UTILS ---
 def fuzzy_match(marker, master):
     lab_clean = clean_marker_name(marker)
     for _, row in master.iterrows():
@@ -166,7 +180,7 @@ def get_status(val, master_row):
         return "IN RANGE", "#34C759", 4
     except: return "ERROR", "#8E8E93", 5
 
-# --- 8. CHART ENGINE (STAGGERED) ---
+# --- 7. CHART ENGINE ---
 def calculate_stagger(events_df, days_threshold=20):
     if events_df.empty: return events_df
     events_df = events_df.sort_values('Date').copy()
@@ -242,7 +256,7 @@ def plot_chart(marker, results, events, master):
 
     return alt.layer(*layers).properties(height=300, background='transparent').configure_view(strokeWidth=0)
 
-# --- 9. UI ---
+# --- 8. UI ---
 master = get_master_data()
 results, events = get_data()
 
@@ -316,7 +330,7 @@ elif nav == "DATA TOOLS":
     up = st.file_uploader("Upload CSV", type=['csv'])
     if up and st.button("Process Batch"):
         msg, count = process_upload(up)
-        if msg=="Success": st.success(f"Processed {count} rows."); st.rerun()
+        if msg=="Success": st.success(f"Processed {count} rows. Please refresh."); st.rerun()
         else: st.error(msg)
         
     st.markdown("---")
