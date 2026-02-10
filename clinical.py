@@ -7,6 +7,7 @@ import altair as alt
 import os
 import re
 from difflib import SequenceMatcher
+from datetime import datetime
 
 # --- 1. CONFIGURATION ---
 st.set_page_config(
@@ -15,7 +16,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed" 
 )
 
-# --- 2. UI STYLING (The "Cool" Terminal Look) ---
+# --- 2. UI STYLING (The "Cool" Terminal Look - Preserved) ---
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap');
@@ -131,7 +132,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- 3. DATA ENGINE ---
+# --- 3. DATA ENGINE (SMART MERGE UPGRADE) ---
 SHEET_NAME = "HealthOS_DB"
 MASTER_FILE_LOCAL = "Biomarker_Master_Elite.csv"
 
@@ -156,17 +157,17 @@ def get_google_sheet_client():
         except: return None
     else: return None
 
-# --- BASIC CLEANER (Restored to Simple Logic) ---
+# Cleaner
 def clean_numeric_value(val):
     if pd.isna(val): return None
     s = str(val).strip().replace(',', '')
-    # Basic PSA fix (remove units)
     s = s.replace('µg/L', '').replace('ng/mL', '').replace('<', '').replace('>', '')
     try:
         return float(re.findall(r"[-+]?\d*\.\d+|\d+", s)[0])
     except:
         return None
 
+# Load Data
 @st.cache_data(ttl=5)
 def load_data():
     client = get_google_sheet_client()
@@ -188,6 +189,10 @@ def load_data():
             results = pd.DataFrame(data[1:], columns=data[0])
             results['Date'] = pd.to_datetime(results['Date'], errors='coerce')
             results['NumericValue'] = results['Value'].apply(clean_numeric_value)
+            
+            # VIEW-LEVEL DEDUPLICATION (Safety Net)
+            results = results.drop_duplicates(subset=['Date', 'Marker', 'Value'])
+            
         except: results = pd.DataFrame()
 
         # Events
@@ -221,24 +226,58 @@ def clear_data():
     except: pass
     st.cache_data.clear()
 
+# --- THE SMART MERGE FIX ---
 def process_csv_upload(uploaded_file):
     try:
-        try: df = pd.read_csv(uploaded_file)
+        # 1. Read New Data
+        try: df_new = pd.read_csv(uploaded_file)
         except UnicodeDecodeError:
             uploaded_file.seek(0)
-            df = pd.read_csv(uploaded_file, encoding='ISO-8859-1')
+            df_new = pd.read_csv(uploaded_file, encoding='ISO-8859-1')
             
+        # 2. Standardize Columns
+        col_map = {c: c.lower() for c in df_new.columns}
+        df_new.columns = df_new.columns.str.lower()
+        
+        rename_dict = {}
+        for c in df_new.columns:
+            if c in ['biomarker', 'test', 'name', 'analyte']: rename_dict[c] = 'Marker'
+            elif c in ['result', 'reading', 'value', 'concentration']: rename_dict[c] = 'Value'
+            elif c in ['time', 'collected', 'date', 'date collected']: rename_dict[c] = 'Date'
+            elif c in ['unit', 'units']: rename_dict[c] = 'Unit'
+            elif c in ['flag', 'status']: rename_dict[c] = 'Flag'
+        df_new = df_new.rename(columns=rename_dict)
+        
         db_columns = ['Marker', 'Value', 'Unit', 'Flag', 'Date', 'Source']
         for col in db_columns:
-            if col not in df.columns: df[col] = ""
-        df_final = df[db_columns]
-        
+            if col not in df_new.columns: df_new[col] = "" 
+        df_new = df_new[db_columns]
+
+        # 3. Fetch Existing Data
         client = get_google_sheet_client()
         sh = client.open(SHEET_NAME)
-        try: ws = sh.worksheet("Results")
-        except: ws = sh.add_worksheet("Results", 1000, 10); ws.append_row(db_columns)
+        try: 
+            ws = sh.worksheet("Results")
+            existing_data = ws.get_all_values()
+            if len(existing_data) > 1:
+                df_old = pd.DataFrame(existing_data[1:], columns=existing_data[0])
+            else:
+                df_old = pd.DataFrame(columns=db_columns)
+        except: 
+            ws = sh.add_worksheet("Results", 1000, 10)
+            ws.append_row(db_columns)
+            df_old = pd.DataFrame(columns=db_columns)
 
+        # 4. MERGE & DEDUPLICATE (The Magic Step)
+        df_combined = pd.concat([df_old, df_new], ignore_index=True)
+        # Drop strict duplicates (Date + Marker + Value match)
+        df_final = df_combined.drop_duplicates(subset=['Date', 'Marker', 'Value'], keep='last')
+        
+        # 5. Overwrite Sheet (Clean DB)
+        ws.clear()
+        ws.append_row(db_columns)
         ws.append_rows(df_final.astype(str).values.tolist())
+        
         st.cache_data.clear()
         return "Success"
     except Exception as e: return f"Error: {str(e)}"
@@ -289,7 +328,7 @@ def get_detailed_status(val, master_row, marker_name):
         return "IN RANGE", "#34C759", "c-green", rng_str, 4
     except: return "ERROR", "#8E8E93", "c-grey", "Error", 5
 
-# --- 6. CHART ENGINE (STABLE RESTORED) ---
+# --- 6. CHART ENGINE ---
 def plot_clinical_trend(marker_name, results_df, events_df, master_df):
     chart_data = results_df[results_df['Marker'] == marker_name].copy()
     # Simple sort and drop
@@ -420,7 +459,7 @@ if mode == "DASHBOARD":
     
     st.markdown(f"""<div class="hud-card"><div class="hud-val" style="color:#FAFAFA">{len(df_display)}</div><div class="hud-label">TOTAL TESTED</div></div>""", unsafe_allow_html=True)
     st.markdown(f"""<div class="hud-card"><div class="hud-val" style="color:#3B82F6">{stats['Blue']}</div><div class="hud-label">OPTIMAL</div></div>""", unsafe_allow_html=True)
-    st.markdown(f"""<div class="hud-card"><div class="hud-val" style="color:#10B981">{stats['Green']}</div><div class="hud-label">NORMAL</div></div>""", unsafe_allow_html=True)
+    st.markdown(f"""<div class="hud-card"><div class="hud-val" style="color:#34D399">{stats['Green']}</div><div class="hud-label">NORMAL</div></div>""", unsafe_allow_html=True)
     st.markdown(f"""<div class="hud-card"><div class="hud-val" style="color:#F59E0B">{stats['Orange']}</div><div class="hud-label">BORDERLINE</div></div>""", unsafe_allow_html=True)
     st.markdown(f"""<div class="hud-card"><div class="hud-val" style="color:#EF4444">{stats['Red']}</div><div class="hud-label">ABNORMAL</div></div>""", unsafe_allow_html=True)
     
