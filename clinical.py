@@ -113,7 +113,7 @@ def load_data():
                 master = pd.DataFrame(m_data[1:], columns=m_data[0])
         except: pass 
 
-        # Results (With Self-Healing)
+        # Results
         try:
             ws_res = sh.worksheet("Results")
             data = ws_res.get_all_values()
@@ -125,6 +125,7 @@ def load_data():
                 results['CleanMarker'] = results['Marker'].apply(clean_marker_name)
                 results['NumericValue'] = results['Value'].apply(clean_numeric_value)
                 
+                # FINGERPRINT & DEDUPLICATE
                 results['Fingerprint'] = results['DateObj'].astype(str) + "_" + results['CleanMarker'] + "_" + results['NumericValue'].astype(str)
                 results = results.drop_duplicates(subset=['Fingerprint'], keep='last')
                 
@@ -257,7 +258,7 @@ def get_status(val, master_row):
         return "IN RANGE", "#34C759", 4
     except: return "ERROR", "#8E8E93", 5
 
-# --- CHARTING (RED INTERVENTION LINES + BLUE BLOOD DATES + SHADING) ---
+# --- CHARTING (RED BOX + DOTTED BORDER) ---
 def plot_chart(marker, results, events, master):
     df = results[results['CleanMarker'] == clean_marker_name(marker)].copy()
     df = df.dropna(subset=['NumericValue', 'Date']).sort_values('Date')
@@ -270,70 +271,61 @@ def plot_chart(marker, results, events, master):
     d_max = df['NumericValue'].max()
     y_top = max(d_max, max_val) * 1.2
 
-    # 1. Base Chart
+    # 1. BASE
     base = alt.Chart(df).encode(
         x=alt.X('Date:T', axis=alt.Axis(format='%d %b %y', labelColor='#71717A', tickColor='#27272A', domain=False, grid=False)),
         y=alt.Y('NumericValue:Q', scale=alt.Scale(domain=[0, y_top]), axis=alt.Axis(labelColor='#71717A', tickColor='#27272A', domain=False, gridColor='#27272A', gridOpacity=0.2))
     )
 
-    # 2. ZONED SHADING (Red/Green/Red)
-    # Low Danger (Red)
+    # 2. ZONED SHADING
     danger_low = alt.Chart(pd.DataFrame({'y':[0], 'y2':[min_val]})).mark_rect(color='#EF4444', opacity=0.1).encode(y='y', y2='y2') if min_val>0 else None
-    
-    # Optimal/Normal Band (Green)
     optimal_band = alt.Chart(pd.DataFrame({'y':[min_val], 'y2':[max_val]})).mark_rect(color='#10B981', opacity=0.1).encode(y='y', y2='y2') if max_val>0 else None
-    
-    # High Danger (Red)
     danger_high = alt.Chart(pd.DataFrame({'y':[max_val], 'y2':[y_top]})).mark_rect(color='#EF4444', opacity=0.1).encode(y='y', y2='y2') if max_val>0 else None
 
-    # 3. BLOOD TEST DATES (Faint Blue Dotted Lines)
-    blood_dates = base.mark_rule(
-        color='#38BDF8', 
-        strokeDash=[2, 2], 
-        strokeWidth=1,
-        opacity=0.3
-    ).encode(x='Date:T')
+    # 3. BLOOD TEST DATES (Blue Dotted)
+    blood_dates = base.mark_rule(color='#38BDF8', strokeDash=[2, 2], strokeWidth=1, opacity=0.3).encode(x='Date:T')
 
-    # 4. DATA LINE
+    # 4. LINE & POINTS
     color = '#38BDF8'
     glow = base.mark_line(color=color, strokeWidth=8, opacity=0.2, interpolate='monotone')
     line = base.mark_line(color=color, strokeWidth=3, interpolate='monotone')
     
-    # 5. POINTS (Interactive)
     nearest = alt.selection(type='single', nearest=True, on='mouseover', fields=['Date'], empty='none')
-    points = base.mark_circle(size=80, fill='#000000', stroke=color, strokeWidth=2).encode(
-        opacity=alt.condition(nearest, alt.value(1), alt.value(0))
-    ).add_selection(nearest)
-    
+    points = base.mark_circle(size=80, fill='#000000', stroke=color, strokeWidth=2).encode(opacity=alt.condition(nearest, alt.value(1), alt.value(0))).add_selection(nearest)
     tooltips = base.mark_circle(opacity=0).encode(tooltip=[alt.Tooltip('Date:T', format='%d %b %Y'), alt.Tooltip('NumericValue:Q', title=marker)])
 
-    # 6. INTERVENTIONS (Red Dotted Lines, No Circle)
+    # 5. INTERVENTIONS (Dotted Box + Line)
     ev_layer = None
     if not events.empty:
-        # Red Dotted Line
+        # Vertical Line
         ev_rule = alt.Chart(events).mark_rule(
-            color='#EF4444',      # Red
-            strokeDash=[4, 4],    # Dotted
-            strokeWidth=2,
-            opacity=0.9
+            color='#EF4444', strokeWidth=2, strokeDash=[4, 4], opacity=0.8
         ).encode(x='Date:T')
         
-        # Text Label (Red)
-        ev_txt = alt.Chart(events).mark_text(
-            align='center', baseline='bottom', dy=-5,
-            color='#EF4444', font='JetBrains Mono', fontSize=10, fontWeight=700
-        ).encode(x='Date:T', y=alt.value(15), text='Event')
+        # The Black Box with Red Dotted Border (Hides the line behind text)
+        ev_box = alt.Chart(events).mark_point(
+            shape="rect",
+            size=3000, # Wide rectangle
+            fill="#000000", # Black fill blocks the line
+            stroke="#EF4444", # Red border
+            strokeDash=[2, 2], # Dotted border
+            strokeWidth=2
+        ).encode(x='Date:T', y=alt.value(25)) # Positioned at top
         
-        ev_layer = ev_rule + ev_txt
+        # The Text (Inside the box)
+        ev_txt = alt.Chart(events).mark_text(
+            align='center', baseline='middle',
+            color='#EF4444', font='JetBrains Mono', fontSize=10, fontWeight=700, dy=0
+        ).encode(x='Date:T', y=alt.value(25), text='Event')
+        
+        ev_layer = ev_rule + ev_box + ev_txt
 
-    # Assemble
+    # 6. ASSEMBLE
     layers = []
     if danger_low: layers.append(danger_low)
     if optimal_band: layers.append(optimal_band)
     if danger_high: layers.append(danger_high)
-    
     layers.extend([blood_dates, glow, line, points, tooltips])
-    
     if ev_layer: layers.append(ev_layer)
 
     return alt.layer(*layers).properties(height=300, background='transparent').configure_view(strokeWidth=0)
