@@ -3,6 +3,7 @@ import pandas as pd
 import altair as alt
 import re
 from difflib import SequenceMatcher
+from io import StringIO
 
 # --- 1. CONFIGURATION ---
 st.set_page_config(
@@ -11,7 +12,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed" 
 )
 
-# --- 2. SESSION STATE ---
+# --- 2. SESSION STATE (The Database) ---
 if 'data' not in st.session_state:
     st.session_state['data'] = pd.DataFrame(columns=['Date', 'Marker', 'Value', 'Unit'])
 if 'events' not in st.session_state:
@@ -88,31 +89,29 @@ def get_data():
 
 def process_upload(uploaded_file):
     try:
-        # UNIVERSAL READER: Auto-detect separator
-        try:
-            df_new = pd.read_csv(uploaded_file, sep=None, engine='python')
+        try: df_new = pd.read_csv(uploaded_file, sep=None, engine='python')
         except:
             uploaded_file.seek(0)
             df_new = pd.read_csv(uploaded_file, encoding='ISO-8859-1')
         
         # DEBUG VIEW
         with st.expander("🔍 Debug: View Raw Upload", expanded=True):
-            st.write("Columns Found:", df_new.columns.tolist())
             st.dataframe(df_new.head())
 
-        # Normalize Columns
+        # Normalize Columns (THE FIX: Added 'marker' to the list)
         df_new.columns = df_new.columns.str.strip().str.lower()
         
         rename_dict = {}
         for c in df_new.columns:
-            if any(x in c for x in ['biomarker', 'test', 'name', 'analyte']): rename_dict[c] = 'Marker'
+            # FIXED: Added 'marker' to this list so it catches your column
+            if any(x in c for x in ['marker', 'biomarker', 'test', 'name', 'analyte']): rename_dict[c] = 'Marker'
             elif any(x in c for x in ['result', 'reading', 'value', 'concentration']): rename_dict[c] = 'Value'
             elif any(x in c for x in ['time', 'collected', 'date']): rename_dict[c] = 'Date'
             elif any(x in c for x in ['unit']): rename_dict[c] = 'Unit'
 
         df_new = df_new.rename(columns=rename_dict)
         
-        # Check if mapping worked
+        # Validation
         needed = ['Date', 'Marker', 'Value']
         missing = [x for x in needed if x not in df_new.columns]
         
@@ -121,10 +120,8 @@ def process_upload(uploaded_file):
 
         if 'Unit' not in df_new.columns: df_new['Unit'] = ""
         
-        # Final cleanup
+        # Clean & Save
         df_new = df_new[needed + ['Unit']]
-        
-        # Add to session
         st.session_state['data'] = pd.concat([st.session_state['data'], df_new], ignore_index=True)
         return "Success", len(df_new)
 
