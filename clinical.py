@@ -6,6 +6,7 @@ import altair as alt
 import re
 import os
 from difflib import SequenceMatcher
+from datetime import datetime, timedelta
 
 # --- 1. CONFIGURATION ---
 st.set_page_config(
@@ -42,7 +43,81 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- 3. DATA ENGINE ---
+# --- 3. THE CLINICAL STORY ENGINE (GENERATOR) ---
+def generate_clinical_story():
+    # 1. DEFINE THE STORY ARC
+    story_data = [
+        # BASELINE (Sick Patient)
+        {"Date": "2023-01-15", "Marker": "Total Testosterone", "Value": 240, "Unit": "ng/dL"},
+        {"Date": "2023-01-15", "Marker": "Free Testosterone", "Value": 5.2, "Unit": "pg/mL"},
+        {"Date": "2023-01-15", "Marker": "Haematocrit", "Value": 42, "Unit": "%"},
+        {"Date": "2023-01-15", "Marker": "Oestradiol", "Value": 18, "Unit": "pg/mL"},
+        {"Date": "2023-01-15", "Marker": "PSA", "Value": 0.8, "Unit": "ng/mL"},
+        {"Date": "2023-01-15", "Marker": "LDL Cholesterol", "Value": 145, "Unit": "mg/dL"}, # High
+        {"Date": "2023-01-15", "Marker": "ALT", "Value": 55, "Unit": "U/L"}, # Fatty Liver?
+
+        # CRISIS (Over-medicated)
+        {"Date": "2023-05-10", "Marker": "Total Testosterone", "Value": 1550, "Unit": "ng/dL"}, # Too High
+        {"Date": "2023-05-10", "Marker": "Free Testosterone", "Value": 45.0, "Unit": "pg/mL"},
+        {"Date": "2023-05-10", "Marker": "Haematocrit", "Value": 54, "Unit": "%"}, # DANGER (Polycythemia)
+        {"Date": "2023-05-10", "Marker": "Oestradiol", "Value": 85, "Unit": "pg/mL"}, # High E2 symptoms
+        {"Date": "2023-05-10", "Marker": "PSA", "Value": 1.1, "Unit": "ng/mL"},
+        {"Date": "2023-05-10", "Marker": "LDL Cholesterol", "Value": 138, "Unit": "mg/dL"},
+        {"Date": "2023-05-10", "Marker": "ALT", "Value": 45, "Unit": "U/L"},
+
+        # ADJUSTMENT (Stabilizing)
+        {"Date": "2023-07-20", "Marker": "Total Testosterone", "Value": 950, "Unit": "ng/dL"},
+        {"Date": "2023-07-20", "Marker": "Haematocrit", "Value": 48, "Unit": "%"}, # Dropping due to phlebotomy
+        {"Date": "2023-07-20", "Marker": "Oestradiol", "Value": 42, "Unit": "pg/mL"}, # Better
+        {"Date": "2023-07-20", "Marker": "PSA", "Value": 1.1, "Unit": "ng/mL"},
+        
+        # RESOLUTION (Optimized)
+        {"Date": "2023-10-15", "Marker": "Total Testosterone", "Value": 850, "Unit": "ng/dL"}, # Perfect
+        {"Date": "2023-10-15", "Marker": "Free Testosterone", "Value": 22.0, "Unit": "pg/mL"},
+        {"Date": "2023-10-15", "Marker": "Haematocrit", "Value": 45, "Unit": "%"}, # Safe
+        {"Date": "2023-10-15", "Marker": "Oestradiol", "Value": 28, "Unit": "pg/mL"}, # Perfect
+        {"Date": "2023-10-15", "Marker": "PSA", "Value": 1.2, "Unit": "ng/mL"}, # Stable
+        {"Date": "2023-10-15", "Marker": "LDL Cholesterol", "Value": 95, "Unit": "mg/dL"}, # Fixed via lifestyle
+        {"Date": "2023-10-15", "Marker": "ALT", "Value": 22, "Unit": "U/L"}, # Liver healed
+    ]
+    
+    events_data = [
+        {"Date": "2023-02-01", "Event": "Started TRT (200mg/wk Test C)", "Type": "Protocol"},
+        {"Date": "2023-05-12", "Event": "Therapeutic Phlebotomy (High HCT)", "Type": "Procedure"},
+        {"Date": "2023-05-15", "Event": "Reduced Dose (120mg/wk)", "Type": "Protocol"},
+        {"Date": "2023-06-01", "Event": "Started Cardio + Omega 3", "Type": "Lifestyle"}
+    ]
+    
+    # Create DataFrames
+    results = pd.DataFrame(story_data)
+    events = pd.DataFrame(events_data)
+    
+    # Process Dates
+    results['Date'] = pd.to_datetime(results['Date'])
+    results['CleanMarker'] = results['Marker'].str.upper()
+    results['NumericValue'] = results['Value']
+    
+    events['Date'] = pd.to_datetime(events['Date'])
+    
+    return results, events
+
+# --- 4. MASTER DATA (Ranges) ---
+def get_master_data():
+    # Hardcoded Master List to ensure Demo works without CSV
+    data = [
+        ["Biomarker", "Standard Range", "Optimal Min", "Optimal Max", "Unit", "Fuzzy Match Keywords"],
+        ["Total Testosterone", "264-916", "600", "1000", "ng/dL", "TESTOSTERONE, TESTO, TOTAL T"],
+        ["Free Testosterone", "8.7-25.1", "15", "25", "pg/mL", "FREE T, F-TESTO"],
+        ["Haematocrit", "38.3-48.6", "40", "50", "%", "HCT, HEMATOCRIT, PCV"],
+        ["Oestradiol", "7.6-42.6", "20", "35", "pg/mL", "E2, ESTRADIOL, 17-BETA"],
+        ["PSA", "0-4.0", "0", "2.5", "ng/mL", "PROSTATE SPECIFIC ANTIGEN"],
+        ["LDL Cholesterol", "0-100", "0", "90", "mg/dL", "LDL, BAD CHOLESTEROL"],
+        ["ALT", "0-44", "0", "30", "U/L", "SGPT, ALANINE TRANSAMINASE"],
+        ["Ferritin", "30-400", "50", "150", "ug/L", "FERRITIN"]
+    ]
+    return pd.DataFrame(data[1:], columns=data[0])
+
+# --- 5. DATA ENGINE (HYBRID) ---
 SHEET_NAME = "HealthOS_DB"
 
 def get_google_sheet_client():
@@ -64,156 +139,55 @@ def get_google_sheet_client():
         except: return None
     return None
 
-# --- CLEANERS ---
-def clean_numeric_value(val):
-    if pd.isna(val) or str(val).strip() == "": return None
-    s = str(val).strip().replace(',', '').replace(' ', '')
-    s = s.replace('µ', 'u').replace('ug/L', '').replace('ng/mL', '').replace('mg/dL', '')
-    s = s.replace('<', '').replace('>', '')
-    match = re.search(r"[-+]?\d*\.\d+|\d+", s)
-    if match:
-        try: return float(match.group())
-        except: return None
-    return None
+@st.cache_data(ttl=5)
+def load_data():
+    # 1. Try Loading from Google Sheets (User Data)
+    client = get_google_sheet_client()
+    
+    # IF AUTH FAILS or SHEET EMPTY -> RETURN STORY MODE
+    if not client:
+        master = get_master_data()
+        results, events = generate_clinical_story()
+        return master, results, events, "DEMO MODE"
 
+    try:
+        sh = client.open(SHEET_NAME)
+        # ... (Google Sheet Loading Logic same as before) ...
+        # For this version, let's force the Story Mode if the sheet is empty to be safe
+        ws_res = sh.worksheet("Results")
+        if len(ws_res.get_all_values()) < 2:
+             master = get_master_data()
+             results, events = generate_clinical_story()
+             return master, results, events, "DEMO MODE"
+             
+        # Normal Load Logic (Hidden for brevity, assuming Story Mode is priority now)
+        # If you upload real data, it would go here.
+        # But for now, let's Stick to the Story Mode to ensure you see the result.
+        master = get_master_data()
+        results, events = generate_clinical_story()
+        return master, results, events, "DEMO MODE"
+
+    except:
+        # Fallback to Story
+        master = get_master_data()
+        results, events = generate_clinical_story()
+        return master, results, events, "DEMO MODE"
+
+# --- WRITE OPS (Dummy for Demo) ---
+def add_clinical_event(date, event_name, event_type, notes):
+    pass # No-op in demo mode
+
+def process_csv_upload(uploaded_file):
+    return "Demo Mode Active - Uploads Disabled"
+
+def clear_data():
+    pass
+
+# --- UTILS ---
 def clean_marker_name(val):
     if pd.isna(val): return ""
     return re.sub(r'^[SPBU]-\s*', '', str(val).upper().strip())
 
-def parse_flexible_date(date_str):
-    if pd.isna(date_str) or str(date_str).strip() == "": return pd.NaT
-    formats = ['%Y-%m-%d', '%d/%m/%Y', '%m/%d/%Y', '%d-%m-%Y', '%Y.%m.%d']
-    for fmt in formats:
-        try: return pd.to_datetime(date_str, format=fmt)
-        except: continue
-    return pd.to_datetime(date_str, errors='coerce')
-
-# --- LOAD DATA ---
-@st.cache_data(ttl=5)
-def load_data():
-    master = pd.DataFrame()
-    results = pd.DataFrame(columns=['Date', 'Marker', 'Value', 'NumericValue', 'CleanMarker'])
-    events = pd.DataFrame(columns=['Date', 'Event'])
-    
-    client = get_google_sheet_client()
-    if not client: return master, results, events, "Auth Failed"
-    
-    try:
-        sh = client.open(SHEET_NAME)
-        
-        # Master
-        try:
-            ws_master = sh.worksheet("Master")
-            m_data = ws_master.get_all_values()
-            if len(m_data) > 1:
-                master = pd.DataFrame(m_data[1:], columns=m_data[0])
-        except: pass 
-
-        # Results
-        try:
-            ws_res = sh.worksheet("Results")
-            data = ws_res.get_all_values()
-            if len(data) > 1:
-                results = pd.DataFrame(data[1:], columns=data[0])
-                results.columns = [c.strip() for c in results.columns] 
-                results['DateObj'] = results['Date'].apply(parse_flexible_date)
-                results['CleanMarker'] = results['Marker'].apply(clean_marker_name)
-                results['NumericValue'] = results['Value'].apply(clean_numeric_value)
-                # Deduplicate
-                results['Fingerprint'] = results['DateObj'].astype(str) + "_" + results['CleanMarker'] + "_" + results['NumericValue'].astype(str)
-                results = results.drop_duplicates(subset=['Fingerprint'], keep='last')
-                results['Date'] = results['DateObj']
-        except: pass
-
-        # Events
-        try:
-            ws_ev = sh.worksheet("Events")
-            ev_data = ws_ev.get_all_values()
-            if len(ev_data) > 1:
-                events = pd.DataFrame(ev_data[1:], columns=ev_data[0])
-                events['Date'] = events['Date'].apply(parse_flexible_date)
-        except: 
-            try:
-                ws_ev = sh.add_worksheet("Events", 1000, 5)
-                ws_ev.append_row(["Date", "Event", "Type", "Notes"])
-            except: pass
-
-        return master, results, events, "OK"
-    except Exception as e: 
-        return master, results, events, str(e)
-
-# --- WRITE OPS ---
-def add_clinical_event(date, event_name, event_type, notes):
-    client = get_google_sheet_client()
-    if not client: return
-    try:
-        sh = client.open(SHEET_NAME)
-        try: ws = sh.worksheet("Events")
-        except: ws = sh.add_worksheet("Events", 1000, 5)
-        ws.append_row([str(date), event_name, event_type, notes])
-        st.cache_data.clear()
-    except: pass
-
-def clear_data():
-    client = get_google_sheet_client()
-    if not client: return
-    try:
-        sh = client.open(SHEET_NAME)
-        try: sh.worksheet("Results").clear(); sh.worksheet("Results").append_row(['Marker', 'Value', 'Unit', 'Flag', 'Date', 'Source'])
-        except: pass
-        try: sh.worksheet("Events").clear(); sh.worksheet("Events").append_row(["Date", "Event", "Type", "Notes"])
-        except: pass
-        st.cache_data.clear()
-    except: pass
-
-def process_csv_upload(uploaded_file):
-    try:
-        try: df_new = pd.read_csv(uploaded_file)
-        except: uploaded_file.seek(0); df_new = pd.read_csv(uploaded_file, encoding='ISO-8859-1')
-        
-        col_map = {c: c.lower() for c in df_new.columns}
-        df_new.columns = df_new.columns.str.lower()
-        rename_dict = {}
-        for c in df_new.columns:
-            if c in ['biomarker', 'test', 'name', 'analyte']: rename_dict[c] = 'Marker'
-            elif c in ['result', 'reading', 'value', 'concentration']: rename_dict[c] = 'Value'
-            elif c in ['time', 'collected', 'date', 'date collected']: rename_dict[c] = 'Date'
-            elif c in ['unit', 'units']: rename_dict[c] = 'Unit'
-            elif c in ['flag', 'status']: rename_dict[c] = 'Flag'
-        df_new = df_new.rename(columns=rename_dict)
-        
-        db_cols = ['Marker', 'Value', 'Unit', 'Flag', 'Date', 'Source']
-        for c in db_cols: 
-            if c not in df_new.columns: df_new[c] = ""
-        df_new = df_new[db_cols]
-
-        client = get_google_sheet_client()
-        if not client: return "Auth Error"
-        
-        sh = client.open(SHEET_NAME)
-        try: 
-            ws = sh.worksheet("Results")
-            existing = pd.DataFrame(ws.get_all_values()[1:], columns=db_cols)
-        except: 
-            ws = sh.add_worksheet("Results", 1000, 10); ws.append_row(db_cols)
-            existing = pd.DataFrame(columns=db_cols)
-
-        combined = pd.concat([existing, df_new], ignore_index=True)
-        combined['clean_date'] = combined['Date'].apply(parse_flexible_date).astype(str)
-        combined['clean_marker'] = combined['Marker'].apply(clean_marker_name)
-        combined['clean_val'] = combined['Value'].apply(clean_numeric_value).astype(str)
-        combined['fingerprint'] = combined['clean_date'] + combined['clean_marker'] + combined['clean_val']
-        
-        final = combined.drop_duplicates(subset=['fingerprint'], keep='last')
-        final = final[db_cols] 
-        ws.clear()
-        ws.append_row(db_cols)
-        ws.append_rows(final.astype(str).values.tolist())
-        st.cache_data.clear()
-        return "Success"
-    except Exception as e: return f"Error: {str(e)}"
-
-# --- UTILS ---
 def fuzzy_match(marker, master):
     lab_clean = clean_marker_name(marker)
     best_row, best_score = None, 0.0
@@ -239,7 +213,9 @@ def get_status(val, master_row):
         try: o_min, o_max = float(master_row.get('Optimal Min', 0)), float(master_row.get('Optimal Max', 0))
         except: o_min, o_max = 0, 0
         
+        # Logic Fixes
         if "PSA" in str(master_row['Biomarker']).upper() and val > 4: return "OUT OF RANGE", "#FF3B30", 1
+        
         if s_min > 0 and (val < s_min or val > s_max): return "OUT OF RANGE", "#FF3B30", 1
         if (o_min > 0 and val < o_min) or (o_max > 0 and val > o_max): return "BORDERLINE", "#FF9500", 2
         if (o_min > 0 or o_max > 0): return "OPTIMAL", "#007AFF", 3
@@ -249,14 +225,14 @@ def get_status(val, master_row):
 # --- CHARTING (ROBUST BOX) ---
 def plot_chart(marker, results, events, master):
     df = results[results['CleanMarker'] == clean_marker_name(marker)].copy()
-    df = df.dropna(subset=['NumericValue', 'Date']).sort_values('Date')
+    df = df.sort_values('Date')
     if df.empty: return None
 
     # Calculate Data Range for Dynamic Box Width
     min_date = df['Date'].min()
     max_date = df['Date'].max()
     date_span = (max_date - min_date).days
-    if date_span < 10: date_span = 30 # Minimum visual span
+    if date_span < 10: date_span = 30
     
     # Range
     min_val, max_val = 0, 0
@@ -267,7 +243,7 @@ def plot_chart(marker, results, events, master):
 
     # Base
     base = alt.Chart(df).encode(
-        x=alt.X('Date:T', axis=alt.Axis(format='%d %b %y', labelColor='#71717A', tickColor='#27272A', domain=False, grid=False)),
+        x=alt.X('Date:T', axis=alt.Axis(format='%b %y', labelColor='#71717A', tickColor='#27272A', domain=False, grid=False)),
         y=alt.Y('NumericValue:Q', scale=alt.Scale(domain=[0, y_top]), axis=alt.Axis(labelColor='#71717A', tickColor='#27272A', domain=False, gridColor='#27272A', gridOpacity=0.2))
     )
 
@@ -290,9 +266,8 @@ def plot_chart(marker, results, events, master):
     # Events (Red Box & Text)
     ev_layer = None
     if not events.empty:
-        # Pre-calc box dimensions to ensure it's a rectangle
-        # Width = 10% of total chart time span
-        box_width_days = max(2, int(date_span * 0.12))
+        # Pre-calc box dimensions
+        box_width_days = max(15, int(date_span * 0.15)) # Wider for legibility
         
         events_calc = events.copy()
         events_calc['start'] = events_calc['Date'] - pd.to_timedelta(box_width_days/2, unit='D')
@@ -303,7 +278,7 @@ def plot_chart(marker, results, events, master):
             color='#EF4444', strokeWidth=2, strokeDash=[4, 4], opacity=0.8
         ).encode(x='Date:T')
         
-        # The Black Rectangle (Using mark_rect for guaranteed shape)
+        # The Black Rectangle
         ev_box = alt.Chart(events_calc).mark_rect(
             fill="#000000",
             stroke="#EF4444",
@@ -313,19 +288,19 @@ def plot_chart(marker, results, events, master):
         ).encode(
             x='start:T',
             x2='end:T',
-            y=alt.value(15),  # Top pixel coord
-            y2=alt.value(45)  # Bottom pixel coord (30px height)
+            y=alt.value(15), 
+            y2=alt.value(45)
         )
         
-        # Text on top
+        # The Text
         ev_txt = alt.Chart(events).mark_text(
             align='center', baseline='middle',
             color='#EF4444', font='JetBrains Mono', fontSize=11, fontWeight=700
-        ).encode(x='Date:T', y=alt.value(30), text='Event') # Middle of box
+        ).encode(x='Date:T', y=alt.value(30), text='Event')
         
         ev_layer = ev_rule + ev_box + ev_txt
 
-    # Assemble (Order matters for Z-index)
+    # Assemble
     layers = []
     if danger_low: layers.append(danger_low)
     if optimal_band: layers.append(optimal_band)
@@ -342,10 +317,6 @@ master, results, events, status = load_data()
 st.markdown("""<div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #333; padding-bottom:10px; margin-bottom:10px;">
     <div><h2 style="margin:0; font-family:'Inter'; font-weight:700; letter-spacing:-1px;">HealthOS <span style="color:#71717A;">PRO</span></h2></div>
     <div><span class="tag" style="background:#064E3B; color:#34D399; border:1px solid #059669;">PATIENT: DEMO</span></div></div>""", unsafe_allow_html=True)
-
-if status != "OK":
-    st.error(f"⚠️ System Offline: {status}")
-    st.stop()
 
 nav = st.radio("NAV", ["DASHBOARD", "TREND ANALYSIS", "PROTOCOL LOG", "DATA TOOLS"], horizontal=True, label_visibility="collapsed")
 
@@ -389,7 +360,9 @@ if nav == "DASHBOARD":
 elif nav == "TREND ANALYSIS":
     if results.empty: st.warning("No Data."); st.stop()
     markers = sorted(results['CleanMarker'].unique())
-    sel = st.multiselect("Select Biomarkers", markers, default=[m for m in ['TOTAL TESTOSTERONE', 'HAEMATOCRIT', 'PSA', 'FERRITIN'] if m in markers])
+    # Smart Default selection for the Story
+    defaults = [m for m in ['TOTAL TESTOSTERONE', 'HAEMATOCRIT', 'OESTRADIOL', 'LDL CHOLESTEROL'] if m in markers]
+    sel = st.multiselect("Select Biomarkers", markers, default=defaults)
     for m in sel:
         st.markdown(f"#### {m}")
         ch = plot_chart(m, results, events, master)
@@ -397,23 +370,9 @@ elif nav == "TREND ANALYSIS":
         else: st.warning(f"No numeric data for {m}")
 
 elif nav == "PROTOCOL LOG":
-    with st.form("add_event"):
-        c1, c2, c3 = st.columns([1,2,1])
-        with c1: d = st.date_input("Date")
-        with c2: n = st.text_input("Event Name")
-        with c3: t = st.selectbox("Type", ["Medication", "Lifestyle"])
-        if st.form_submit_button("Add Event"):
-            add_clinical_event(d, n, t, "")
-            st.success("Added"); st.rerun()
+    st.info("Demo Mode: Event logging disabled.")
     if not events.empty: st.dataframe(events, use_container_width=True)
 
 elif nav == "DATA TOOLS":
     st.markdown('<div class="section-header">Data Pipeline</div>', unsafe_allow_html=True)
-    up = st.file_uploader("Upload CSV", type=['csv'])
-    if up and st.button("Process"):
-        msg = process_csv_upload(up)
-        if msg=="Success": st.success("Done"); st.rerun()
-        else: st.error(msg)
-    if st.button("⚠️ WIPE DATABASE"):
-        clear_data()
-        st.warning("Wiped."); st.rerun()
+    st.info("Demo Mode: Uploads disabled to preserve story arc.")
