@@ -78,7 +78,6 @@ def get_data():
         results['Date'] = results['Date'].apply(parse_flexible_date)
         results['CleanMarker'] = results['Marker'].apply(clean_marker_name)
         results['NumericValue'] = results['Value'].apply(clean_numeric_value)
-        # Deduplicate
         results['Fingerprint'] = results['Date'].astype(str) + "_" + results['CleanMarker'] + "_" + results['NumericValue'].astype(str)
         results = results.drop_duplicates(subset=['Fingerprint'], keep='last')
     
@@ -97,9 +96,7 @@ def process_upload(uploaded_file):
         with st.expander("🔍 Debug: View Raw Upload", expanded=True):
             st.dataframe(df_new.head())
 
-        # Normalize Columns
         df_new.columns = df_new.columns.str.strip().str.lower()
-        
         rename_dict = {}
         for c in df_new.columns:
             if any(x in c for x in ['marker', 'biomarker', 'test', 'name', 'analyte']): rename_dict[c] = 'Marker'
@@ -108,12 +105,9 @@ def process_upload(uploaded_file):
             elif any(x in c for x in ['unit']): rename_dict[c] = 'Unit'
 
         df_new = df_new.rename(columns=rename_dict)
-        
         needed = ['Date', 'Marker', 'Value']
         missing = [x for x in needed if x not in df_new.columns]
-        
-        if missing:
-            return f"❌ Missing columns: {missing}. Found: {df_new.columns.tolist()}", 0
+        if missing: return f"❌ Missing columns: {missing}. Found: {df_new.columns.tolist()}", 0
 
         if 'Unit' not in df_new.columns: df_new['Unit'] = ""
         df_new = df_new[needed + ['Unit']]
@@ -172,32 +166,30 @@ def get_status(val, master_row):
         return "IN RANGE", "#34C759", 4
     except: return "ERROR", "#8E8E93", 5
 
-# --- 7. CHART ENGINE (INDEPENDENT SCALES) ---
+# --- 7. CHART ENGINE (SEPARATE LAYERS) ---
 def calculate_stagger(events_df, days_threshold=20):
     if events_df.empty: return events_df
     events_df = events_df.sort_values('Date').copy()
     events_df['lane'] = 0
     lane_end_dates = {}
     
-    # Safe start date for calc
-    safe_min_date = pd.Timestamp("1900-01-01")
+    # Safe start for subtraction
+    safe_min = pd.Timestamp("1900-01-01")
     
     for idx, row in events_df.iterrows():
         current_date = row['Date']
         assigned = False
         lane = 0
         while not assigned:
-            last_date = lane_end_dates.get(lane, safe_min_date)
+            last_date = lane_end_dates.get(lane, safe_min)
             if (current_date - last_date).days > days_threshold:
                 events_df.at[idx, 'lane'] = lane
                 lane_end_dates[lane] = current_date
                 assigned = True
             else: lane += 1
             
-    # FIXED: Map lanes to Fixed Y Values (0-10 Scale)
-    # Lane 0 (Top) -> Y=9.5
-    # Lane 1 -> Y=8.0
-    # Lane 2 -> Y=6.5
+    # Map lanes to 0-10 Annotation Scale
+    # Lane 0 = 9.5, Lane 1 = 8.0, etc.
     events_df['y_top'] = 9.5 - (events_df['lane'] * 1.5)
     events_df['y_bottom'] = events_df['y_top'] - 1.0
     events_df['y_text'] = events_df['y_top'] - 0.5
@@ -208,28 +200,33 @@ def plot_chart(marker, results, events, master):
     df = df.dropna(subset=['NumericValue', 'Date']).sort_values('Date')
     if df.empty: return None
 
+    # Time Bounds
     min_date, max_date = df['Date'].min(), df['Date'].max()
     date_span = (max_date - min_date).days
     if date_span < 10: date_span = 30
     
+    # Values & Range
     min_val, max_val = 0, 0
     m_row = fuzzy_match(marker, master)
     if m_row is not None: min_val, max_val = parse_range(m_row['Standard Range'])
     d_max = df['NumericValue'].max()
     y_top = max(d_max, max_val) * 1.2
 
-    # --- LAYER 1: DATA (Dynamic Scale) ---
+    # --- UNIVERSE A: DATA (Scaled to Values) ---
     base = alt.Chart(df).encode(
         x=alt.X('Date:T', axis=alt.Axis(format='%b %y', labelColor='#71717A', tickColor='#27272A', domain=False, grid=False)),
         y=alt.Y('NumericValue:Q', scale=alt.Scale(domain=[0, y_top]), axis=alt.Axis(labelColor='#71717A', tickColor='#27272A', domain=False, gridColor='#27272A', gridOpacity=0.2))
     )
 
+    # Zones
     danger_low = alt.Chart(pd.DataFrame({'y':[0], 'y2':[min_val]})).mark_rect(color='#EF4444', opacity=0.1).encode(y='y', y2='y2') if min_val>0 else None
     optimal_band = alt.Chart(pd.DataFrame({'y':[min_val], 'y2':[max_val]})).mark_rect(color='#10B981', opacity=0.1).encode(y='y', y2='y2') if max_val>0 else None
     danger_high = alt.Chart(pd.DataFrame({'y':[max_val], 'y2':[y_top]})).mark_rect(color='#EF4444', opacity=0.1).encode(y='y', y2='y2') if max_val>0 else None
     
+    # Blood Date Markers
     blood_dates = base.mark_rule(color='#38BDF8', strokeDash=[2, 2], strokeWidth=1, opacity=0.3).encode(x='Date:T')
 
+    # Line & Points
     color = '#38BDF8'
     glow = base.mark_line(color=color, strokeWidth=8, opacity=0.2, interpolate='monotone')
     line = base.mark_line(color=color, strokeWidth=3, interpolate='monotone')
@@ -237,39 +234,39 @@ def plot_chart(marker, results, events, master):
     points = base.mark_circle(size=80, fill='#000000', stroke=color, strokeWidth=2).encode(opacity=alt.condition(nearest, alt.value(1), alt.value(0))).add_selection(nearest)
     tooltips = base.mark_circle(opacity=0).encode(tooltip=[alt.Tooltip('Date:T', format='%d %b %Y'), alt.Tooltip('NumericValue:Q', title=marker)])
 
-    data_layer = glow + line + points + tooltips
-    if danger_low: data_layer = danger_low + data_layer
-    if optimal_band: data_layer = optimal_band + data_layer
-    if danger_high: data_layer = danger_high + data_layer
-    data_layer = blood_dates + data_layer
+    # Assemble Data Layer
+    data_layer_items = []
+    if danger_low: data_layer_items.append(danger_low)
+    if optimal_band: data_layer_items.append(optimal_band)
+    if danger_high: data_layer_items.append(danger_high)
+    data_layer_items.extend([blood_dates, glow, line, points, tooltips])
+    
+    # Add vertical event lines to DATA layer (they use pixel height, so safe)
+    if not events.empty:
+        ev_rule = alt.Chart(events).mark_rule(color='#EF4444', strokeWidth=1, strokeDash=[4, 4], opacity=0.5).encode(
+            x='Date:T', y=alt.value(0), y2=alt.value(350)
+        )
+        data_layer_items.append(ev_rule)
 
-    # --- LAYER 2: EVENTS (Fixed Scale 0-10) ---
-    ev_layer = None
+    main_layer = alt.layer(*data_layer_items)
+
+    # --- UNIVERSE B: ANNOTATIONS (Scaled 0-10) ---
     if not events.empty:
         staggered_events = calculate_stagger(events, days_threshold=int(date_span*0.15))
         box_width_days = max(15, int(date_span * 0.12))
         staggered_events['start'] = staggered_events['Date'] - pd.to_timedelta(box_width_days/2, unit='D')
         staggered_events['end'] = staggered_events['Date'] + pd.to_timedelta(box_width_days/2, unit='D')
 
-        # NOTE: Fixed Y Domain [0, 10]
-        ev_base = alt.Chart(staggered_events).encode(
-            x='Date:T', 
-            y=alt.Y('y_top:Q', scale=alt.Scale(domain=[0, 10]), axis=None) # Hide axis
-        )
-
-        ev_rule = ev_base.mark_rule(color='#EF4444', strokeWidth=1, strokeDash=[4, 4], opacity=0.5).encode(
-            y=alt.value(0), # From top
-            y2=alt.value(300) # To bottom
-        )
-        
+        # Boxes (Scale 0-10)
         ev_box = alt.Chart(staggered_events).mark_rect(
             fill="#000000", stroke="#EF4444", strokeDash=[2, 2], strokeWidth=2, opacity=1
         ).encode(
             x='start:T', x2='end:T',
             y=alt.Y('y_top:Q', scale=alt.Scale(domain=[0, 10])),
-            y2=alt.Y('y_bottom:Q', scale=alt.Scale(domain=[0, 10]))
+            y2='y_bottom:Q'
         )
         
+        # Text (Scale 0-10)
         ev_txt = alt.Chart(staggered_events).mark_text(
             align='center', baseline='middle', color='#EF4444', font='JetBrains Mono', fontSize=10, fontWeight=700
         ).encode(
@@ -278,13 +275,12 @@ def plot_chart(marker, results, events, master):
             text='Event'
         )
         
-        ev_layer = ev_rule + ev_box + ev_txt
-
-    # --- COMBINE WITH INDEPENDENT Y-AXES ---
-    if ev_layer:
-        return alt.layer(data_layer, ev_layer).resolve_scale(y='independent').properties(height=320, background='transparent').configure_view(strokeWidth=0)
-    else:
-        return data_layer.properties(height=320, background='transparent').configure_view(strokeWidth=0)
+        annotation_layer = alt.layer(ev_box, ev_txt)
+        
+        # Combine Universes with Independent Scales
+        return alt.layer(main_layer, annotation_layer).resolve_scale(y='independent').properties(height=320, background='transparent').configure_view(strokeWidth=0)
+    
+    return main_layer.properties(height=320, background='transparent').configure_view(strokeWidth=0)
 
 # --- 8. UI ---
 master = get_master_data()
