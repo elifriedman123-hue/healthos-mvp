@@ -12,13 +12,13 @@ st.set_page_config(
     initial_sidebar_state="collapsed" 
 )
 
-# --- 2. SESSION STATE (The Database) ---
+# --- 2. SESSION STATE ---
 if 'data' not in st.session_state:
     st.session_state['data'] = pd.DataFrame(columns=['Date', 'Marker', 'Value', 'Unit'])
 if 'events' not in st.session_state:
     st.session_state['events'] = pd.DataFrame(columns=['Date', 'Event', 'Type', 'Notes'])
 
-# --- 3. UI STYLING ---
+# --- 3. STYLING ---
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap');
@@ -94,7 +94,6 @@ def process_upload(uploaded_file):
             uploaded_file.seek(0)
             df_new = pd.read_csv(uploaded_file, encoding='ISO-8859-1')
         
-        # DEBUG VIEW
         with st.expander("🔍 Debug: View Raw Upload", expanded=True):
             st.dataframe(df_new.head())
 
@@ -110,7 +109,6 @@ def process_upload(uploaded_file):
 
         df_new = df_new.rename(columns=rename_dict)
         
-        # Validation
         needed = ['Date', 'Marker', 'Value']
         missing = [x for x in needed if x not in df_new.columns]
         
@@ -118,8 +116,6 @@ def process_upload(uploaded_file):
             return f"❌ Missing columns: {missing}. Found: {df_new.columns.tolist()}", 0
 
         if 'Unit' not in df_new.columns: df_new['Unit'] = ""
-        
-        # Clean & Save
         df_new = df_new[needed + ['Unit']]
         st.session_state['data'] = pd.concat([st.session_state['data'], df_new], ignore_index=True)
         return "Success", len(df_new)
@@ -176,14 +172,14 @@ def get_status(val, master_row):
         return "IN RANGE", "#34C759", 4
     except: return "ERROR", "#8E8E93", 5
 
-# --- 7. CHART ENGINE ---
+# --- 7. CHART ENGINE (INDEPENDENT SCALES) ---
 def calculate_stagger(events_df, days_threshold=20):
     if events_df.empty: return events_df
     events_df = events_df.sort_values('Date').copy()
     events_df['lane'] = 0
     lane_end_dates = {}
     
-    # SAFE START DATE (THE FIX: 1900 instead of Min)
+    # Safe start date for calc
     safe_min_date = pd.Timestamp("1900-01-01")
     
     for idx, row in events_df.iterrows():
@@ -191,16 +187,20 @@ def calculate_stagger(events_df, days_threshold=20):
         assigned = False
         lane = 0
         while not assigned:
-            last_date = lane_end_dates.get(lane, safe_min_date) # <-- FIXED HERE
+            last_date = lane_end_dates.get(lane, safe_min_date)
             if (current_date - last_date).days > days_threshold:
                 events_df.at[idx, 'lane'] = lane
                 lane_end_dates[lane] = current_date
                 assigned = True
             else: lane += 1
             
-    events_df['y_top'] = 10 + (events_df['lane'] * 35)
-    events_df['y_bottom'] = events_df['y_top'] + 25
-    events_df['y_text'] = events_df['y_top'] + 12.5
+    # FIXED: Map lanes to Fixed Y Values (0-10 Scale)
+    # Lane 0 (Top) -> Y=9.5
+    # Lane 1 -> Y=8.0
+    # Lane 2 -> Y=6.5
+    events_df['y_top'] = 9.5 - (events_df['lane'] * 1.5)
+    events_df['y_bottom'] = events_df['y_top'] - 1.0
+    events_df['y_text'] = events_df['y_top'] - 0.5
     return events_df
 
 def plot_chart(marker, results, events, master):
@@ -218,6 +218,7 @@ def plot_chart(marker, results, events, master):
     d_max = df['NumericValue'].max()
     y_top = max(d_max, max_val) * 1.2
 
+    # --- LAYER 1: DATA (Dynamic Scale) ---
     base = alt.Chart(df).encode(
         x=alt.X('Date:T', axis=alt.Axis(format='%b %y', labelColor='#71717A', tickColor='#27272A', domain=False, grid=False)),
         y=alt.Y('NumericValue:Q', scale=alt.Scale(domain=[0, y_top]), axis=alt.Axis(labelColor='#71717A', tickColor='#27272A', domain=False, gridColor='#27272A', gridOpacity=0.2))
@@ -236,6 +237,13 @@ def plot_chart(marker, results, events, master):
     points = base.mark_circle(size=80, fill='#000000', stroke=color, strokeWidth=2).encode(opacity=alt.condition(nearest, alt.value(1), alt.value(0))).add_selection(nearest)
     tooltips = base.mark_circle(opacity=0).encode(tooltip=[alt.Tooltip('Date:T', format='%d %b %Y'), alt.Tooltip('NumericValue:Q', title=marker)])
 
+    data_layer = glow + line + points + tooltips
+    if danger_low: data_layer = danger_low + data_layer
+    if optimal_band: data_layer = optimal_band + data_layer
+    if danger_high: data_layer = danger_high + data_layer
+    data_layer = blood_dates + data_layer
+
+    # --- LAYER 2: EVENTS (Fixed Scale 0-10) ---
     ev_layer = None
     if not events.empty:
         staggered_events = calculate_stagger(events, days_threshold=int(date_span*0.15))
@@ -243,19 +251,40 @@ def plot_chart(marker, results, events, master):
         staggered_events['start'] = staggered_events['Date'] - pd.to_timedelta(box_width_days/2, unit='D')
         staggered_events['end'] = staggered_events['Date'] + pd.to_timedelta(box_width_days/2, unit='D')
 
-        ev_rule = alt.Chart(staggered_events).mark_rule(color='#EF4444', strokeWidth=1, strokeDash=[4, 4], opacity=0.5).encode(x='Date:T')
-        ev_box = alt.Chart(staggered_events).mark_rect(fill="#000000", stroke="#EF4444", strokeDash=[2, 2], strokeWidth=2, opacity=1).encode(x='start:T', x2='end:T', y='y_top:Q', y2='y_bottom:Q')
-        ev_txt = alt.Chart(staggered_events).mark_text(align='center', baseline='middle', color='#EF4444', font='JetBrains Mono', fontSize=10, fontWeight=700).encode(x='Date:T', y='y_text:Q', text='Event')
+        # NOTE: Fixed Y Domain [0, 10]
+        ev_base = alt.Chart(staggered_events).encode(
+            x='Date:T', 
+            y=alt.Y('y_top:Q', scale=alt.Scale(domain=[0, 10]), axis=None) # Hide axis
+        )
+
+        ev_rule = ev_base.mark_rule(color='#EF4444', strokeWidth=1, strokeDash=[4, 4], opacity=0.5).encode(
+            y=alt.value(0), # From top
+            y2=alt.value(300) # To bottom
+        )
+        
+        ev_box = alt.Chart(staggered_events).mark_rect(
+            fill="#000000", stroke="#EF4444", strokeDash=[2, 2], strokeWidth=2, opacity=1
+        ).encode(
+            x='start:T', x2='end:T',
+            y=alt.Y('y_top:Q', scale=alt.Scale(domain=[0, 10])),
+            y2=alt.Y('y_bottom:Q', scale=alt.Scale(domain=[0, 10]))
+        )
+        
+        ev_txt = alt.Chart(staggered_events).mark_text(
+            align='center', baseline='middle', color='#EF4444', font='JetBrains Mono', fontSize=10, fontWeight=700
+        ).encode(
+            x='Date:T',
+            y=alt.Y('y_text:Q', scale=alt.Scale(domain=[0, 10])),
+            text='Event'
+        )
+        
         ev_layer = ev_rule + ev_box + ev_txt
 
-    layers = []
-    if danger_low: layers.append(danger_low)
-    if optimal_band: layers.append(optimal_band)
-    if danger_high: layers.append(danger_high)
-    layers.extend([blood_dates, glow, line, points, tooltips])
-    if ev_layer: layers.append(ev_layer)
-
-    return alt.layer(*layers).properties(height=300, background='transparent').configure_view(strokeWidth=0)
+    # --- COMBINE WITH INDEPENDENT Y-AXES ---
+    if ev_layer:
+        return alt.layer(data_layer, ev_layer).resolve_scale(y='independent').properties(height=320, background='transparent').configure_view(strokeWidth=0)
+    else:
+        return data_layer.properties(height=320, background='transparent').configure_view(strokeWidth=0)
 
 # --- 8. UI ---
 master = get_master_data()
