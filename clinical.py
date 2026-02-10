@@ -78,7 +78,6 @@ def get_data():
         results['Date'] = results['Date'].apply(parse_flexible_date)
         results['CleanMarker'] = results['Marker'].apply(clean_marker_name)
         results['NumericValue'] = results['Value'].apply(clean_numeric_value)
-        # Deduplicate using Fingerprint
         results['Fingerprint'] = results['Date'].astype(str) + "_" + results['CleanMarker'] + "_" + results['NumericValue'].astype(str)
         results = results.drop_duplicates(subset=['Fingerprint'], keep='last')
     
@@ -139,14 +138,14 @@ def get_master_data():
     ]
     return pd.DataFrame(data[1:], columns=data[0])
 
-# --- 6. UTILS (BEST SCORE MATCHING) ---
+# --- 6. UTILS (STRICT MATCH) ---
 def fuzzy_match(marker, master):
     lab_clean = clean_marker_name(marker)
-    # Exact Match First
+    # Exact
     for _, row in master.iterrows():
         keywords = [clean_marker_name(k) for k in str(row['Fuzzy Match Keywords']).split(",")]
         if lab_clean in keywords: return row
-    # Best Score
+    # Fuzzy
     best_score = 0
     best_row = None
     for _, row in master.iterrows():
@@ -177,7 +176,7 @@ def get_status(val, master_row):
         return "IN RANGE", "#34C759", 4
     except: return "ERROR", "#8E8E93", 5
 
-# --- 7. CHART ENGINE ---
+# --- 7. CHART ENGINE (MANUAL SCALING) ---
 def calculate_stagger(events_df, days_threshold=20):
     if events_df.empty: return events_df
     events_df = events_df.sort_values('Date').copy()
@@ -195,10 +194,6 @@ def calculate_stagger(events_df, days_threshold=20):
                 lane_end_dates[lane] = current_date
                 assigned = True
             else: lane += 1
-    # Scale 0-10
-    events_df['y_top'] = 9.5 - (events_df['lane'] * 1.5)
-    events_df['y_bottom'] = events_df['y_top'] - 1.0
-    events_df['y_text'] = events_df['y_top'] - 0.5
     return events_df
 
 def plot_chart(marker, results, events, master):
@@ -206,19 +201,21 @@ def plot_chart(marker, results, events, master):
     df = df.dropna(subset=['NumericValue', 'Date']).sort_values('Date')
     if df.empty: return None
 
-    # Scale Params
+    # Time Bounds
     min_date, max_date = df['Date'].min(), df['Date'].max()
     date_span = (max_date - min_date).days
     if date_span < 10: date_span = 30
     
+    # Y Scale Calculations
     min_val, max_val = 0, 0
     m_row = fuzzy_match(marker, master)
     if m_row is not None: min_val, max_val = parse_range(m_row['Standard Range'])
     d_max = df['NumericValue'].max()
-    y_top = max(d_max, max_val) * 1.2
-
-    # --- CHART 1: CLINICAL DATA ---
-    # Only inherits Data from 'df'
+    
+    # Define Y-Top to be 30% higher than max data to fit boxes
+    y_top = max(d_max, max_val) * 1.3
+    
+    # DATA LAYER
     base = alt.Chart(df).encode(
         x=alt.X('Date:T', axis=alt.Axis(format='%b %y', labelColor='#71717A', tickColor='#27272A', domain=False, grid=False)),
         y=alt.Y('NumericValue:Q', scale=alt.Scale(domain=[0, y_top]), axis=alt.Axis(labelColor='#71717A', tickColor='#27272A', domain=False, gridColor='#27272A', gridOpacity=0.2))
@@ -227,7 +224,6 @@ def plot_chart(marker, results, events, master):
     danger_low = alt.Chart(pd.DataFrame({'y':[0], 'y2':[min_val]})).mark_rect(color='#EF4444', opacity=0.1).encode(y='y', y2='y2') if min_val>0 else None
     optimal_band = alt.Chart(pd.DataFrame({'y':[min_val], 'y2':[max_val]})).mark_rect(color='#10B981', opacity=0.1).encode(y='y', y2='y2') if max_val>0 else None
     danger_high = alt.Chart(pd.DataFrame({'y':[max_val], 'y2':[y_top]})).mark_rect(color='#EF4444', opacity=0.1).encode(y='y', y2='y2') if max_val>0 else None
-    
     blood_dates = base.mark_rule(color='#38BDF8', strokeDash=[2, 2], strokeWidth=1, opacity=0.3).encode(x='Date:T')
     glow = base.mark_line(color='#38BDF8', strokeWidth=8, opacity=0.2, interpolate='monotone')
     line = base.mark_line(color='#38BDF8', strokeWidth=3, interpolate='monotone')
@@ -235,55 +231,54 @@ def plot_chart(marker, results, events, master):
     points = base.mark_circle(size=80, fill='#000000', stroke='#38BDF8', strokeWidth=2).encode(opacity=alt.condition(nearest, alt.value(1), alt.value(0))).add_selection(nearest)
     tooltips = base.mark_circle(opacity=0).encode(tooltip=[alt.Tooltip('Date:T', format='%d %b %Y'), alt.Tooltip('NumericValue:Q', title=marker)])
 
-    clinical_layers = []
-    if danger_low: clinical_layers.append(danger_low)
-    if optimal_band: clinical_layers.append(optimal_band)
-    if danger_high: clinical_layers.append(danger_high)
-    clinical_layers.extend([blood_dates, glow, line, points, tooltips])
-    
-    chart_clinical = alt.layer(*clinical_layers)
-
-    # --- CHART 2: EVENTS (Separate Data Source) ---
+    # EVENT LAYER (Manually Scaled to Top of Graph)
+    ev_layer = []
     if not events.empty:
         staggered_events = calculate_stagger(events, days_threshold=int(date_span*0.15))
         box_width_days = max(15, int(date_span * 0.12))
         staggered_events['start'] = staggered_events['Date'] - pd.to_timedelta(box_width_days/2, unit='D')
         staggered_events['end'] = staggered_events['Date'] + pd.to_timedelta(box_width_days/2, unit='D')
 
-        # Base chart for events with FIXED SCALE 0-10
-        base_ev = alt.Chart(staggered_events).encode(
-            x='Date:T',
-            y=alt.Y('y_top:Q', scale=alt.Scale(domain=[0, 10]), axis=None)
-        )
+        # Calculate Y positions relative to the REAL data scale
+        # Top of graph = y_top
+        # Each lane is 7% of graph height
+        lane_height = y_top * 0.08
+        staggered_events['y_top_val'] = y_top - (staggered_events['lane'] * lane_height * 1.2) - (y_top * 0.02)
+        staggered_events['y_bot_val'] = staggered_events['y_top_val'] - lane_height
+        staggered_events['y_txt_val'] = staggered_events['y_top_val'] - (lane_height / 2)
 
-        ev_rule = base_ev.mark_rule(color='#EF4444', strokeWidth=1, strokeDash=[4, 4], opacity=0.5).encode(
-            y=alt.value(0), 
-            y2=alt.value(300)
+        # Dotted Line
+        ev_rule = alt.Chart(staggered_events).mark_rule(color='#EF4444', strokeWidth=1, strokeDash=[4, 4], opacity=0.5).encode(
+            x='Date:T', y=alt.value(0), y2=alt.value(350)
         )
-        
-        ev_box = base_ev.mark_rect(
+        ev_layer.append(ev_rule)
+
+        # Box
+        ev_box = alt.Chart(staggered_events).mark_rect(
             fill="#000000", stroke="#EF4444", strokeDash=[2, 2], strokeWidth=2, opacity=1
         ).encode(
             x='start:T', x2='end:T',
-            y=alt.Y('y_top:Q', scale=alt.Scale(domain=[0, 10]), axis=None),
-            y2=alt.Y('y_bottom:Q', scale=alt.Scale(domain=[0, 10]), axis=None)
+            y='y_top_val:Q', y2='y_bot_val:Q'
         )
+        ev_layer.append(ev_box)
         
-        ev_txt = base_ev.mark_text(
+        # Text
+        ev_txt = alt.Chart(staggered_events).mark_text(
             align='center', baseline='middle', color='#EF4444', font='JetBrains Mono', fontSize=10, fontWeight=700
         ).encode(
-            x='Date:T',
-            y=alt.Y('y_text:Q', scale=alt.Scale(domain=[0, 10]), axis=None),
-            text='Event'
+            x='Date:T', y='y_txt_val:Q', text='Event'
         )
-        
-        chart_events = alt.layer(ev_rule, ev_box, ev_txt)
-        
-        # FINAL MERGE: Independent Y resolution
-        return alt.layer(chart_clinical, chart_events).resolve_scale(y='independent').properties(height=320, background='transparent').configure_view(strokeWidth=0)
+        ev_layer.append(ev_txt)
 
-    # If no events, just return clinical chart
-    return chart_clinical.properties(height=320, background='transparent').configure_view(strokeWidth=0)
+    # COMBINE FLATLY
+    final_layers = []
+    if danger_low: final_layers.append(danger_low)
+    if optimal_band: final_layers.append(optimal_band)
+    if danger_high: final_layers.append(danger_high)
+    final_layers.extend([blood_dates, glow, line, points, tooltips])
+    if ev_layer: final_layers.extend(ev_layer)
+
+    return alt.layer(*final_layers).properties(height=320, background='transparent').configure_view(strokeWidth=0)
 
 # --- 8. UI ---
 master = get_master_data()
