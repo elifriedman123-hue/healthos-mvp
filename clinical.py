@@ -78,7 +78,7 @@ def get_data():
         results['Date'] = results['Date'].apply(parse_flexible_date)
         results['CleanMarker'] = results['Marker'].apply(clean_marker_name)
         results['NumericValue'] = results['Value'].apply(clean_numeric_value)
-        # Deduplicate
+        # Deduplicate using Fingerprint
         results['Fingerprint'] = results['Date'].astype(str) + "_" + results['CleanMarker'] + "_" + results['NumericValue'].astype(str)
         results = results.drop_duplicates(subset=['Fingerprint'], keep='last')
     
@@ -139,21 +139,24 @@ def get_master_data():
     ]
     return pd.DataFrame(data[1:], columns=data[0])
 
-# --- 6. UTILS (STRICT MATCHING) ---
+# --- 6. UTILS (BEST SCORE MATCHING) ---
 def fuzzy_match(marker, master):
     lab_clean = clean_marker_name(marker)
-    # 1. Exact Match First
+    # Exact Match First
     for _, row in master.iterrows():
         keywords = [clean_marker_name(k) for k in str(row['Fuzzy Match Keywords']).split(",")]
         if lab_clean in keywords: return row
-    # 2. Strict Fuzzy
-    best_row, best_score = None, 0.0
+    # Best Score
+    best_score = 0
+    best_row = None
     for _, row in master.iterrows():
         keywords = [clean_marker_name(k) for k in str(row['Fuzzy Match Keywords']).split(",")]
         for key in keywords:
             score = SequenceMatcher(None, lab_clean, key).ratio()
-            if score > best_score: best_score, best_row = score, row
-    return best_row if best_score > 0.85 else None # High threshold for accuracy
+            if score > best_score:
+                best_score = score
+                best_row = row
+    return best_row if best_score > 0.85 else None
 
 def parse_range(range_str):
     if pd.isna(range_str): return 0,0
@@ -174,7 +177,7 @@ def get_status(val, master_row):
         return "IN RANGE", "#34C759", 4
     except: return "ERROR", "#8E8E93", 5
 
-# --- 7. CHART ENGINE (FLATTENED) ---
+# --- 7. CHART ENGINE ---
 def calculate_stagger(events_df, days_threshold=20):
     if events_df.empty: return events_df
     events_df = events_df.sort_values('Date').copy()
@@ -203,7 +206,7 @@ def plot_chart(marker, results, events, master):
     df = df.dropna(subset=['NumericValue', 'Date']).sort_values('Date')
     if df.empty: return None
 
-    # Params
+    # Scale Params
     min_date, max_date = df['Date'].min(), df['Date'].max()
     date_span = (max_date - min_date).days
     if date_span < 10: date_span = 30
@@ -214,7 +217,8 @@ def plot_chart(marker, results, events, master):
     d_max = df['NumericValue'].max()
     y_top = max(d_max, max_val) * 1.2
 
-    # --- UNIVERSE 1: CLINICAL DATA ---
+    # --- CHART 1: CLINICAL DATA ---
+    # Only inherits Data from 'df'
     base = alt.Chart(df).encode(
         x=alt.X('Date:T', axis=alt.Axis(format='%b %y', labelColor='#71717A', tickColor='#27272A', domain=False, grid=False)),
         y=alt.Y('NumericValue:Q', scale=alt.Scale(domain=[0, y_top]), axis=alt.Axis(labelColor='#71717A', tickColor='#27272A', domain=False, gridColor='#27272A', gridOpacity=0.2))
@@ -223,6 +227,7 @@ def plot_chart(marker, results, events, master):
     danger_low = alt.Chart(pd.DataFrame({'y':[0], 'y2':[min_val]})).mark_rect(color='#EF4444', opacity=0.1).encode(y='y', y2='y2') if min_val>0 else None
     optimal_band = alt.Chart(pd.DataFrame({'y':[min_val], 'y2':[max_val]})).mark_rect(color='#10B981', opacity=0.1).encode(y='y', y2='y2') if max_val>0 else None
     danger_high = alt.Chart(pd.DataFrame({'y':[max_val], 'y2':[y_top]})).mark_rect(color='#EF4444', opacity=0.1).encode(y='y', y2='y2') if max_val>0 else None
+    
     blood_dates = base.mark_rule(color='#38BDF8', strokeDash=[2, 2], strokeWidth=1, opacity=0.3).encode(x='Date:T')
     glow = base.mark_line(color='#38BDF8', strokeWidth=8, opacity=0.2, interpolate='monotone')
     line = base.mark_line(color='#38BDF8', strokeWidth=3, interpolate='monotone')
@@ -236,23 +241,27 @@ def plot_chart(marker, results, events, master):
     if danger_high: clinical_layers.append(danger_high)
     clinical_layers.extend([blood_dates, glow, line, points, tooltips])
     
-    # Create the "Clinical Layer" object
     chart_clinical = alt.layer(*clinical_layers)
 
-    # --- UNIVERSE 2: EVENT DATA ---
+    # --- CHART 2: EVENTS (Separate Data Source) ---
     if not events.empty:
         staggered_events = calculate_stagger(events, days_threshold=int(date_span*0.15))
         box_width_days = max(15, int(date_span * 0.12))
         staggered_events['start'] = staggered_events['Date'] - pd.to_timedelta(box_width_days/2, unit='D')
         staggered_events['end'] = staggered_events['Date'] + pd.to_timedelta(box_width_days/2, unit='D')
 
-        # Dotted Line (Uses Pixel height, so safe)
-        ev_rule = alt.Chart(staggered_events).mark_rule(color='#EF4444', strokeWidth=1, strokeDash=[4, 4], opacity=0.5).encode(
-            x='Date:T', y=alt.value(0), y2=alt.value(350)
+        # Base chart for events with FIXED SCALE 0-10
+        base_ev = alt.Chart(staggered_events).encode(
+            x='Date:T',
+            y=alt.Y('y_top:Q', scale=alt.Scale(domain=[0, 10]), axis=None)
+        )
+
+        ev_rule = base_ev.mark_rule(color='#EF4444', strokeWidth=1, strokeDash=[4, 4], opacity=0.5).encode(
+            y=alt.value(0), 
+            y2=alt.value(300)
         )
         
-        # Boxes (Scale 0-10)
-        ev_box = alt.Chart(staggered_events).mark_rect(
+        ev_box = base_ev.mark_rect(
             fill="#000000", stroke="#EF4444", strokeDash=[2, 2], strokeWidth=2, opacity=1
         ).encode(
             x='start:T', x2='end:T',
@@ -260,8 +269,7 @@ def plot_chart(marker, results, events, master):
             y2=alt.Y('y_bottom:Q', scale=alt.Scale(domain=[0, 10]), axis=None)
         )
         
-        # Text (Scale 0-10)
-        ev_txt = alt.Chart(staggered_events).mark_text(
+        ev_txt = base_ev.mark_text(
             align='center', baseline='middle', color='#EF4444', font='JetBrains Mono', fontSize=10, fontWeight=700
         ).encode(
             x='Date:T',
@@ -269,13 +277,12 @@ def plot_chart(marker, results, events, master):
             text='Event'
         )
         
-        # Create the "Event Layer" object
         chart_events = alt.layer(ev_rule, ev_box, ev_txt)
         
-        # MERGE with Independent Scales
+        # FINAL MERGE: Independent Y resolution
         return alt.layer(chart_clinical, chart_events).resolve_scale(y='independent').properties(height=320, background='transparent').configure_view(strokeWidth=0)
 
-    # Fallback if no events
+    # If no events, just return clinical chart
     return chart_clinical.properties(height=320, background='transparent').configure_view(strokeWidth=0)
 
 # --- 8. UI ---
