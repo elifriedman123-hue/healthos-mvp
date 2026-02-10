@@ -5,6 +5,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 import altair as alt
 import re
 import os
+from difflib import SequenceMatcher # <--- THIS WAS MISSING
 
 # --- 1. CONFIGURATION ---
 st.set_page_config(
@@ -94,7 +95,6 @@ def parse_flexible_date(date_str):
 # --- LOAD & SELF-HEAL ---
 @st.cache_data(ttl=5)
 def load_data():
-    # SAFETY INIT: Always create empty DFs first
     master = pd.DataFrame()
     results = pd.DataFrame(columns=['Date', 'Marker', 'Value', 'NumericValue', 'CleanMarker'])
     events = pd.DataFrame(columns=['Date', 'Event'])
@@ -326,8 +326,10 @@ if nav == "DASHBOARD":
     dates = sorted(results['Date'].dropna().unique(), reverse=True)
     sel_date = st.selectbox("REPORT DATE", [d.strftime('%d %b %Y').upper() for d in dates])
     
+    # Filter
     subset = results[results['Date'].dt.strftime('%d %b %Y').str.upper() == sel_date].copy()
     
+    # Process
     rows, counts = [], {1:0, 2:0, 3:0, 4:0}
     for _, r in subset.iterrows():
         m_row = fuzzy_match(r['Marker'], master)
@@ -336,6 +338,7 @@ if nav == "DASHBOARD":
             if prio in counts: counts[prio] += 1
             rows.append({'Marker': m_row['Biomarker'], 'Value': r['Value'], 'Status': stat, 'Color': col, 'Prio': prio})
     
+    # HUD
     st.markdown(f"""<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(120px, 1fr)); gap:10px; margin-bottom:20px;">
         <div class="hud-card"><div class="hud-val" style="color:#FAFAFA">{len(rows)}</div><div class="hud-label">TESTED</div></div>
         <div class="hud-card"><div class="hud-val" style="color:#007AFF">{counts[3]}</div><div class="hud-label">OPTIMAL</div></div>
@@ -344,6 +347,7 @@ if nav == "DASHBOARD":
         <div class="hud-card"><div class="hud-val" style="color:#FF3B30">{counts[1]}</div><div class="hud-label">ACTION</div></div>
     </div>""", unsafe_allow_html=True)
 
+    # Lists
     c1, c2 = st.columns(2)
     with c1:
         st.markdown('<div class="section-header">Attention Required</div>', unsafe_allow_html=True)
