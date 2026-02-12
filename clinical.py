@@ -10,31 +10,26 @@ from difflib import SequenceMatcher
 st.set_page_config(
     page_title="HealthOS Pro",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="expanded"
 )
 
 # ---------------------------
-# 2) SESSION STATE (ONE CLEAN PLACE)
+# 2) SESSION STATE (CLEAN + SINGLE SOURCE OF TRUTH)
 # ---------------------------
 if "data" not in st.session_state:
     st.session_state["data"] = pd.DataFrame(columns=["Date", "Marker", "Value", "Unit"])
-
 if "events" not in st.session_state:
     st.session_state["events"] = pd.DataFrame(columns=["Date", "Event", "Type", "Notes"])
-
 if "patient" not in st.session_state:
     st.session_state["patient"] = {
         "name": "Patient Demo",
         "sex": "M",
         "age": 47,
+        "mrn": "",
         "height_cm": "",
         "weight_kg": "",
-        "mrn": "",
-        "notes": "",
+        "notes": ""
     }
-
-if "last_lab_label" not in st.session_state:
-    st.session_state["last_lab_label"] = "—"
 
 # ---------------------------
 # 3) APPLE-LIKE LIGHT CLINICAL THEME (CSS)
@@ -42,7 +37,7 @@ if "last_lab_label" not in st.session_state:
 st.markdown(
     """
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
 :root{
   --bg: #F7F9FB;
@@ -59,6 +54,9 @@ st.markdown(
   --bad: #DC2626;
 
   --chip-bg: rgba(15,23,42,0.04);
+  --sidebar-bg: #FFFFFF;
+  --sidebar-item: rgba(37,99,235,0.06);
+  --sidebar-active: rgba(37,99,235,0.12);
 }
 
 html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
@@ -66,111 +64,87 @@ html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
 [data-testid="stHeader"] { display:none; }
 #MainMenu, footer { visibility: hidden; }
 
-.block-container{
-  padding-top: 0.75rem;
-  padding-bottom: 1.5rem;
-  max-width: 100%;
-  padding-left: 1rem !important;
-  padding-right: 1rem !important;
+.block-container {
+    padding-top: 0.65rem;
+    padding-bottom: 1.25rem;
+    max-width: 100%;
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
 }
 
-/* Sidebar width + polish */
-[data-testid="stSidebar"]{
-  background: #FFFFFF;
-  border-right: 1px solid var(--border);
-  width: 240px !important;
+/* Cards / Sections */
+.card{
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 16px; box-shadow: var(--shadow);
+  padding: 14px;
 }
-[data-testid="stSidebar"] > div:first-child { width: 240px !important; }
-[data-testid="stSidebar"] .block-container{ padding-top: 1rem; }
+
+.section-title{
+  margin: 8px 0 8px 0; font-size: 13px; font-weight: 800;
+  color: var(--text); letter-spacing: -0.01em;
+}
+
+.small-muted{ font-size: 11px; color: var(--muted); }
 
 /* Top bar */
 .hos-topbar{
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  padding: 12px 14px;
-  background: rgba(255,255,255,0.85);
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  box-shadow: var(--shadow);
-  backdrop-filter: blur(10px);
-  margin-bottom: 18px;
+  display:flex; align-items:center; justify-content:space-between;
+  padding: 12px 14px; background: rgba(255,255,255,0.92);
+  border: 1px solid var(--border); border-radius: 16px;
+  box-shadow: var(--shadow); backdrop-filter: blur(10px);
+  margin-bottom: 14px;
 }
 .brand{ display:flex; flex-direction:column; gap:2px; }
-.brand h1{ margin:0; font-size: 20px; letter-spacing:-0.02em; color: var(--text); font-weight: 900; }
-.brand .sub{ margin:0; font-size: 12px; color: var(--muted); font-weight: 600; }
+.brand h1{ margin:0; font-size: 20px; letter-spacing:-0.02em; color: var(--text); font-weight: 800; }
+.brand .sub{ margin:0; font-size: 12px; color: var(--muted); }
 .meta{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; justify-content:flex-end; }
 .pill{
   display:inline-flex; align-items:center; gap:8px;
   padding: 8px 10px; border-radius: 999px;
   border: 1px solid var(--border); background: #FFFFFF;
-  color: var(--text); font-size: 12px; font-weight: 700;
+  color: var(--text); font-size: 12px;
 }
-.pill strong{ font-weight: 900; }
+.pill strong{ font-weight: 800; }
 .pill .dot{ width:8px; height:8px; border-radius:999px; background: var(--ok); }
 
-/* Sections + cards */
-.section-title{
-  margin: 12px 0 8px 0;
-  font-size: 13px; font-weight: 900;
-  color: var(--text);
-  letter-spacing: -0.01em;
-}
-.small-muted{ font-size: 11px; color: var(--muted); }
-
-.card{
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  box-shadow: var(--shadow);
-  padding: 14px;
-}
-
-/* KPI grid */
+/* KPI */
 .kpi-grid{
   display:grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 10px;
-  margin: 10px 0 18px 0;
+  margin: 10px 0 14px 0;
 }
 @media (max-width: 1100px){
   .kpi-grid{ grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 .kpi{
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  padding: 14px;
-  box-shadow: var(--shadow);
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 16px; padding: 14px; box-shadow: var(--shadow);
 }
-.kpi .label{ font-size: 12px; color: var(--muted); margin-bottom: 6px; font-weight: 800; }
+.kpi .label{ font-size: 12px; color: var(--muted); margin-bottom: 6px; font-weight: 700; }
 .kpi .val{ font-size: 28px; color: var(--text); font-weight: 900; letter-spacing: -0.03em; }
-.kpi .hint{ font-size: 11px; color: var(--muted); margin-top: 2px; font-weight: 600; }
+.kpi .hint{ font-size: 11px; color: var(--muted); margin-top: 2px; }
 
-/* Row cards */
+/* Rows */
 .row{
   display:flex; justify-content:space-between; align-items:center;
-  padding: 12px 12px;
-  border-radius: 14px;
+  padding: 12px 12px; border-radius: 14px;
   border: 1px solid var(--border);
   background: #FFFFFF;
 }
 .row + .row{ margin-top: 8px; }
 .row-left{ display:flex; flex-direction:column; gap:4px; }
-.row-title{ font-size: 13px; font-weight: 900; color: var(--text); }
-.row-sub{ font-size: 11px; color: var(--muted); display:flex; gap:8px; flex-wrap:wrap; align-items:center; font-weight: 600; }
+.row-title{ font-size: 13px; font-weight: 800; color: var(--text); }
+.row-sub{ font-size: 11px; color: var(--muted); display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
 .row-right{ text-align:right; display:flex; flex-direction:column; gap:4px; }
 .row-val{ font-size: 14px; font-weight: 900; color: var(--text); }
-.row-delta{ font-size: 11px; color: var(--muted); font-weight: 600; }
+.row-delta{ font-size: 11px; color: var(--muted); }
 
+/* Chips */
 .chip{
-  display:inline-flex; align-items:center;
-  padding: 4px 8px;
-  border-radius: 999px;
-  border: 1px solid var(--border);
-  background: var(--chip-bg);
-  font-size: 11px;
-  font-weight: 900;
+  display:inline-flex; align-items:center; padding: 4px 8px;
+  border-radius: 999px; border: 1px solid var(--border);
+  background: var(--chip-bg); font-size: 11px; font-weight: 800;
 }
 .chip.optimal{ color: var(--optimal); }
 .chip.ok{ color: var(--ok); }
@@ -183,63 +157,125 @@ div.stButton > button{
   border: 1px solid var(--border) !important;
   background: #FFFFFF !important;
   color: var(--text) !important;
-  font-weight: 900 !important;
+  font-weight: 800 !important;
+  padding: 0.6rem 0.9rem !important;
 }
 div.stButton > button:hover{
   border-color: rgba(37,99,235,0.35) !important;
   color: var(--primary) !important;
 }
 
-/* Sidebar nav polish */
-[data-testid="stSidebar"] .stRadio label{
-  padding: 10px 10px;
-  border-radius: 12px;
-  margin: 2px 0;
-  border: 1px solid transparent;
-}
-[data-testid="stSidebar"] .stRadio label:hover{
-  background: rgba(37,99,235,0.06);
-  border-color: rgba(37,99,235,0.12);
-}
-[data-testid="stSidebar"] .stRadio div[role="radiogroup"] > label[data-checked="true"]{
-  background: rgba(37,99,235,0.10);
-  border-color: rgba(37,99,235,0.18);
-}
-[data-testid="stSidebar"] .stRadio p{
+/* --- Inputs: force light theme (fix dark fields) --- */
+input, textarea {
+  background: #FFFFFF !important;
   color: #0F172A !important;
-  font-weight: 900 !important;
+  border: 1px solid rgba(15,23,42,0.10) !important;
+  border-radius: 14px !important;
 }
-
-/* Apple-style select/multiselect */
 [data-baseweb="select"] > div {
   background: #FFFFFF !important;
   border: 1px solid rgba(15,23,42,0.10) !important;
   border-radius: 14px !important;
   box-shadow: 0 8px 30px rgba(15,23,42,0.04) !important;
 }
-[data-baseweb="select"] * { color: #0F172A !important; font-weight: 800; }
+[data-baseweb="select"] * { color: #0F172A !important; font-weight: 700; }
 [data-baseweb="select"] svg { color: #64748B !important; }
-
 [data-baseweb="tag"]{
   background: rgba(37,99,235,0.10) !important;
   border: 1px solid rgba(37,99,235,0.16) !important;
   border-radius: 999px !important;
 }
-[data-baseweb="tag"] span{ color: #1D4ED8 !important; font-weight: 900 !important; }
-
+[data-baseweb="tag"] span{ color: #1D4ED8 !important; font-weight: 800 !important; }
 ul[role="listbox"]{
   background: #FFFFFF !important;
   border: 1px solid rgba(15,23,42,0.10) !important;
   border-radius: 14px !important;
   box-shadow: 0 18px 60px rgba(15,23,42,0.12) !important;
 }
-ul[role="listbox"] li{ color: #0F172A !important; font-weight: 800; }
+ul[role="listbox"] li{ color: #0F172A !important; }
 ul[role="listbox"] li:hover{ background: rgba(37,99,235,0.06) !important; }
 
-/* Reduce vertical whitespace between elements */
-[data-testid="stVerticalBlock"] { gap: 0.6rem; }
-h3 { margin-top: 0.6rem !important; margin-bottom: 0.4rem !important; }
+/* Reduce vertical whitespace */
+[data-testid="stVerticalBlock"] { gap: 0.55rem; }
+h3 { margin-top: 0.55rem !important; margin-bottom: 0.35rem !important; }
 
+/* --- Premium Sidebar --- */
+[data-testid="stSidebar"] {
+  background: var(--sidebar-bg);
+  border-right: 1px solid var(--border);
+  width: 255px !important;
+}
+[data-testid="stSidebar"] > div:first-child { width: 255px !important; }
+[data-testid="stSidebar"] .block-container { padding-top: 0.9rem; }
+
+.sidebar-brand{
+  display:flex; flex-direction:column; gap:6px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+  background: rgba(255,255,255,0.92);
+  margin-bottom: 12px;
+}
+.sidebar-brand .logo-line{
+  display:flex; align-items:center; justify-content:space-between;
+}
+.sidebar-brand .logo{
+  font-weight: 900; letter-spacing:-0.02em;
+  color: var(--text); font-size: 16px;
+}
+.sidebar-brand .tag{
+  font-size: 11px; font-weight: 800;
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: rgba(15,23,42,0.03);
+  color: var(--muted);
+}
+.sidebar-brand .mini{
+  font-size: 11px; color: var(--muted);
+  line-height: 1.2;
+}
+
+/* Sidebar radio -> iOS list */
+[data-testid="stSidebar"] .stRadio div[role="radiogroup"]{
+  gap: 6px;
+}
+[data-testid="stSidebar"] .stRadio label{
+  padding: 10px 12px;
+  border-radius: 14px;
+  margin: 0;
+  border: 1px solid transparent;
+  background: transparent;
+}
+[data-testid="stSidebar"] .stRadio label:hover{
+  background: var(--sidebar-item);
+  border-color: rgba(37,99,235,0.10);
+}
+[data-testid="stSidebar"] .stRadio div[role="radiogroup"] > label[data-checked="true"]{
+  background: var(--sidebar-active);
+  border-color: rgba(37,99,235,0.18);
+}
+[data-testid="stSidebar"] .stRadio p{
+  color: #0F172A !important;
+  font-weight: 900 !important;
+  font-size: 13px !important;
+}
+
+.sidebar-section{
+  font-size: 11px;
+  font-weight: 900;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin: 10px 0 6px 6px;
+}
+
+/* Make sidebar toggles small + clean */
+[data-testid="stSidebar"] [data-testid="stToggleSwitch"]{
+  transform: scale(0.92);
+  transform-origin: left center;
+}
 </style>
 """,
     unsafe_allow_html=True,
@@ -262,12 +298,10 @@ def clean_numeric_value(val):
             return None
     return None
 
-
 def clean_marker_name(val):
     if pd.isna(val):
         return ""
     return re.sub(r"^[SPBU]-\s*", "", str(val).upper().strip())
-
 
 def parse_flexible_date(date_str):
     if pd.isna(date_str) or str(date_str).strip() == "":
@@ -279,7 +313,6 @@ def parse_flexible_date(date_str):
         except:
             continue
     return pd.to_datetime(date_str, errors="coerce")
-
 
 def get_data():
     results = st.session_state["data"].copy()
@@ -302,7 +335,6 @@ def get_data():
         events["Date"] = events["Date"].apply(parse_flexible_date)
 
     return results, events
-
 
 def process_upload(uploaded_file, show_debug=False):
     try:
@@ -344,23 +376,19 @@ def process_upload(uploaded_file, show_debug=False):
     except Exception as e:
         return f"Error: {str(e)}", 0
 
-
-def add_clinical_event(date, name, type, note=""):
+def add_clinical_event(date, name, type, note):
     new_event = pd.DataFrame([{"Date": str(date), "Event": name, "Type": type, "Notes": note}])
     st.session_state["events"] = pd.concat([st.session_state["events"], new_event], ignore_index=True)
-
 
 def delete_event(index):
     st.session_state["events"] = st.session_state["events"].drop(index).reset_index(drop=True)
 
-
 def wipe_db():
     st.session_state["data"] = pd.DataFrame(columns=["Date", "Marker", "Value", "Unit"])
     st.session_state["events"] = pd.DataFrame(columns=["Date", "Event", "Type", "Notes"])
-    st.session_state["last_lab_label"] = "—"
 
 # ---------------------------
-# 5) MASTER RANGES (YOUR “DATABASE” FOR DEMO)
+# 5) MASTER RANGES (DEMO)
 # ---------------------------
 def get_master_data():
     data = [
@@ -381,13 +409,11 @@ def get_master_data():
 def fuzzy_match(marker, master):
     lab_clean = clean_marker_name(marker)
 
-    # Exact keyword match
     for _, row in master.iterrows():
         keywords = [clean_marker_name(k) for k in str(row["Fuzzy Match Keywords"]).split(",")]
         if lab_clean in keywords:
             return row
 
-    # Fuzzy match
     best_score = 0
     best_row = None
     for _, row in master.iterrows():
@@ -400,7 +426,6 @@ def fuzzy_match(marker, master):
 
     return best_row if best_score > 0.85 else None
 
-
 def parse_range(range_str):
     if pd.isna(range_str):
         return 0, 0
@@ -410,13 +435,7 @@ def parse_range(range_str):
         return float(parts[0]), float(parts[1])
     return 0, 0
 
-
 def get_status(val, master_row):
-    """
-    Returns:
-      status_label, status_key, priority
-    where status_key in {"bad","warn","optimal","ok"}
-    """
     try:
         s_min, s_max = parse_range(master_row["Standard Range"])
         try:
@@ -431,11 +450,9 @@ def get_status(val, master_row):
         if s_min > 0 and (val < s_min or val > s_max):
             return "OUT OF RANGE", "bad", 1
 
-        # borderline if outside optimal band (when optimal exists)
         if (o_min > 0 and val < o_min) or (o_max > 0 and val > o_max):
             return "BORDERLINE", "warn", 2
 
-        # optimal if within optimal band (when optimal exists)
         if (o_min > 0 or o_max > 0):
             return "OPTIMAL", "optimal", 3
 
@@ -444,16 +461,13 @@ def get_status(val, master_row):
     except:
         return "ERROR", "warn", 5
 
-
 def status_chip(status_key: str, label: str) -> str:
     return f'<span class="chip {status_key}">{label}</span>'
-
 
 def last_lab_date(results_df):
     if results_df.empty or results_df["Date"].dropna().empty:
         return None
     return results_df["Date"].dropna().max()
-
 
 def calc_delta(marker_clean, results, current_date):
     df = results[(results["CleanMarker"] == marker_clean) & results["Date"].notna()].copy()
@@ -497,7 +511,6 @@ def calculate_stagger(events_df, days_threshold=20):
             else:
                 lane += 1
     return events_df
-
 
 def plot_chart(marker, results, events, master):
     df = results[results["CleanMarker"] == clean_marker_name(marker)].copy()
@@ -623,7 +636,7 @@ def plot_chart(marker, results, events, master):
     return alt.layer(*layers).properties(height=480, background="#FFFFFF").configure_view(strokeWidth=0)
 
 # ---------------------------
-# 8) UI SHELL (ONE HEADER ONLY)
+# 8) UI SHELL (SINGLE TOP BAR)
 # ---------------------------
 master = get_master_data()
 results, events = get_data()
@@ -631,18 +644,16 @@ patient = st.session_state["patient"]
 
 last_date = last_lab_date(results)
 last_date_str = last_date.strftime("%d %b %Y") if last_date is not None else "—"
-st.session_state["last_lab_label"] = last_date_str
 
-# Top bar (single source of truth)
 st.markdown(
     f"""
 <div class="hos-topbar">
   <div class="brand">
-    <h1>HealthOS <span style="color:#64748B;font-weight:900;">PRO</span></h1>
+    <h1>HealthOS <span style="color: var(--muted); font-weight:800;">PRO</span></h1>
     <div class="sub">Clinical Intelligence Platform</div>
   </div>
   <div class="meta">
-    <span class="pill"><span class="dot"></span><strong>{patient.get('name','Patient')}</strong> • {patient.get('sex','')} • {patient.get('age','')}</span>
+    <span class="pill"><span class="dot"></span><strong>{patient.get('name','Patient')}</strong> • {patient.get('sex','')}, {patient.get('age','')}</span>
     <span class="pill">Last Lab: <strong>{last_date_str}</strong></span>
   </div>
 </div>
@@ -650,86 +661,99 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# Sidebar
+# ---------------------------
+# 9) PREMIUM SIDEBAR
+# ---------------------------
 with st.sidebar:
-    st.markdown("### Navigation")
+    st.markdown(
+        """
+<div class="sidebar-brand">
+  <div class="logo-line">
+    <div class="logo">HealthOS</div>
+    <div class="tag">PRO</div>
+  </div>
+  <div class="mini">Doctor demo build • clean clinical UI</div>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+
+    st.markdown('<div class="sidebar-section">Workspace</div>', unsafe_allow_html=True)
     nav = st.radio(
         "NAV",
-        ["Patient", "Dashboard", "Trends", "Interventions", "Import"],
+        ["👤 Patient", "📊 Dashboard", "📈 Trends", "💊 Interventions", "⬆️ Import"],
         label_visibility="collapsed",
     )
-    st.markdown("---")
-    st.markdown("**Demo Mode**")
+
+    st.markdown('<div class="sidebar-section">Demo</div>', unsafe_allow_html=True)
     show_debug = st.toggle("Show debug tools", value=False)
     st.markdown('<div class="small-muted">Tip: keep debug off during doctor demos.</div>', unsafe_allow_html=True)
 
 # ---------------------------
-# 9) PAGES
+# 10) PAGES
 # ---------------------------
-if nav == "Patient":
-    st.markdown("### Patient intake (for doctor demos)")
+if nav == "👤 Patient":
+    st.markdown('<div class="card">', unsafe_allow_html=True)
+    st.markdown("### Patient intake (doctor demo)")
     st.markdown('<div class="small-muted">Enter patient details, then upload labs. This becomes the “live patient test” flow.</div>', unsafe_allow_html=True)
 
-    st.markdown('<div class="card">', unsafe_allow_html=True)
-    with st.form("patient_form"):
-        c1, c2, c3, c4 = st.columns([2, 1, 1, 1], gap="large")
+    with st.form("patient_form", clear_on_submit=False):
+        c1, c2, c3, c4 = st.columns([2.2, 1.0, 0.9, 1.3], gap="large")
         with c1:
             name = st.text_input("Patient name", value=patient.get("name", ""))
         with c2:
             sex = st.selectbox("Sex", ["M", "F"], index=0 if patient.get("sex", "M") == "M" else 1)
         with c3:
-            age = st.number_input("Age", min_value=0, max_value=120, value=int(patient.get("age") or 0))
+            age = st.number_input("Age", min_value=0, max_value=120, value=int(patient.get("age", 0) or 0), step=1)
         with c4:
-            mrn = st.text_input("MRN", value=patient.get("mrn", ""))
+            mrn = st.text_input("MRN (optional)", value=patient.get("mrn", ""))
 
         c5, c6 = st.columns(2, gap="large")
         with c5:
-            height_cm = st.text_input("Height (cm)", value=patient.get("height_cm", ""))
+            height_cm = st.text_input("Height (cm)", value=str(patient.get("height_cm", "")))
         with c6:
-            weight_kg = st.text_input("Weight (kg)", value=patient.get("weight_kg", ""))
+            weight_kg = st.text_input("Weight (kg)", value=str(patient.get("weight_kg", "")))
 
-        notes = st.text_area("Notes", value=patient.get("notes", ""), placeholder="Optional clinical notes for context…")
+        notes = st.text_area("Optional clinical notes for context…", value=patient.get("notes", ""), height=110)
 
         save = st.form_submit_button("Save patient")
         if save:
             st.session_state["patient"] = {
                 "name": name,
                 "sex": sex,
-                "age": age,
+                "age": int(age),
                 "mrn": mrn,
                 "height_cm": height_cm,
                 "weight_kg": weight_kg,
                 "notes": notes,
             }
             st.success("Saved.")
-            st.rerun()
+
     st.markdown("</div>", unsafe_allow_html=True)
 
-    st.markdown("### Upload labs (live demo)")
-    st.markdown('<div class="small-muted">For now: CSV upload. Later: PDF/image upload.</div>', unsafe_allow_html=True)
-
     st.markdown('<div class="card">', unsafe_allow_html=True)
-    up = st.file_uploader("Upload CSV", type=["csv"], key="patient_upload")
-    if up and st.button("Process upload", key="patient_process"):
+    st.markdown("### Upload labs (the demo)")
+    st.markdown('<div class="small-muted">For now: CSV upload. Later: PDF/image upload + AI extraction.</div>', unsafe_allow_html=True)
+
+    up = st.file_uploader("Upload CSV", type=["csv"], key="patient_csv")
+    if up and st.button("Process upload"):
         msg, count = process_upload(up, show_debug=show_debug)
         if msg == "Success":
             st.success(f"Imported {count} rows.")
             st.rerun()
         else:
             st.error(msg)
-    st.markdown("</div>", unsafe_allow_html=True)
 
-    st.markdown("### Quick actions")
-    a1, a2 = st.columns([1, 1], gap="large")
-    with a1:
+    if show_debug:
+        st.markdown("---")
         if st.button("Wipe session (demo reset)"):
             wipe_db()
             st.warning("Wiped.")
             st.rerun()
-    with a2:
-        st.info("Next step: add PDF/image upload here (the doctor’s preferred flow).")
 
-elif nav == "Dashboard":
+    st.markdown("</div>", unsafe_allow_html=True)
+
+elif nav == "📊 Dashboard":
     if results.empty:
         st.markdown('<div class="card">', unsafe_allow_html=True)
         st.markdown("### Upload your first lab to begin")
@@ -820,10 +844,7 @@ elif nav == "Dashboard":
             )
 
         if shown == 0:
-            st.markdown(
-                '<div class="small-muted">Nothing in this section for this report date.</div>',
-                unsafe_allow_html=True,
-            )
+            st.markdown('<div class="small-muted">Nothing in this section for this report date.</div>', unsafe_allow_html=True)
 
         st.markdown("</div>", unsafe_allow_html=True)
 
@@ -832,23 +853,19 @@ elif nav == "Dashboard":
     with c2:
         render_rows("Stable / optimized", lambda r: r["StatusKey"] in ["optimal", "ok"])
 
-elif nav == "Trends":
+elif nav == "📈 Trends":
     if results.empty:
-        st.warning("No data loaded yet. Go to Patient or Import.")
+        st.warning("No data loaded yet. Upload a CSV in Patient (or Import).")
         st.stop()
 
     markers = sorted(results["CleanMarker"].unique())
     defaults = [m for m in ["TOTAL TESTOSTERONE", "FREE TESTOSTERONE", "OESTRADIOL", "HAEMATOCRIT", "PSA", "FERRITIN", "LDL CHOLESTEROL"] if m in markers]
 
-    topA, topB, topC = st.columns([2.4, 1.1, 1.5], gap="large")
+    topA, topB, topC = st.columns([2.2, 1.2, 1.6], gap="large")
     with topA:
         sel = st.multiselect("Select biomarkers", markers, default=defaults)
     with topB:
-        # Streamlit versions differ; this keeps it working everywhere.
-        try:
-            layout = st.segmented_control("Layout", options=["Stacked", "2-column"], default="2-column")
-        except Exception:
-            layout = st.radio("Layout", options=["Stacked", "2-column"], horizontal=True, index=1)
+        layout = st.segmented_control("Layout", options=["Stacked", "2-column"], default="2-column")
     with topC:
         compare_mode = st.toggle("Compare pair", value=True)
 
@@ -858,7 +875,7 @@ elif nav == "Trends":
 
     pair = []
     if compare_mode:
-        c1, c2 = st.columns(2)
+        c1, c2 = st.columns(2, gap="large")
         with c1:
             p1 = st.selectbox("Compare: left", sel, index=0 if sel else 0)
         with c2:
@@ -881,9 +898,8 @@ elif nav == "Trends":
                 render_chart(m)
                 already.add(m)
         for m in sel:
-            if m in already:
-                continue
-            render_chart(m)
+            if m not in already:
+                render_chart(m)
     else:
         used = set()
         if pair:
@@ -903,16 +919,13 @@ elif nav == "Trends":
                 if i + 1 < len(remaining):
                     render_chart(remaining[i + 1])
 
-elif nav == "Interventions":
+elif nav == "💊 Interventions":
     st.markdown("### Interventions timeline")
-    st.markdown(
-        '<div class="small-muted">Add medication/lifestyle/procedure events. These appear as markers on trend charts.</div>',
-        unsafe_allow_html=True,
-    )
+    st.markdown('<div class="small-muted">Medication / lifestyle / procedure events appear as markers on trend charts.</div>', unsafe_allow_html=True)
 
     st.markdown('<div class="card">', unsafe_allow_html=True)
     with st.form("add_event"):
-        c1, c2, c3 = st.columns([1, 2, 1])
+        c1, c2, c3 = st.columns([1, 2, 1], gap="large")
         with c1:
             d = st.date_input("Date")
         with c2:
@@ -930,6 +943,7 @@ elif nav == "Interventions":
     else:
         ev = events.dropna(subset=["Date"]).sort_values("Date")
         st.markdown('<div class="card">', unsafe_allow_html=True)
+
         for i, row in ev.iterrows():
             st.markdown(
                 f"""
@@ -941,6 +955,9 @@ elif nav == "Interventions":
       <span>{row['Date'].strftime('%d %b %Y')}</span>
     </div>
   </div>
+  <div class="row-right">
+    <div class="row-delta"></div>
+  </div>
 </div>
 """,
                 unsafe_allow_html=True,
@@ -950,19 +967,17 @@ elif nav == "Interventions":
                 if st.button("Delete", key=f"del_{i}"):
                     delete_event(i)
                     st.rerun()
+
         st.markdown("</div>", unsafe_allow_html=True)
 
-elif nav == "Import":
-    st.markdown("### Import lab data")
-    st.markdown(
-        '<div class="small-muted">Raw CSV uploader (utility). For doctor demos, use the Patient tab.</div>',
-        unsafe_allow_html=True,
-    )
+elif nav == "⬆️ Import":
+    st.markdown("### Import (utility)")
+    st.markdown('<div class="small-muted">Raw CSV uploader. For doctor demos, use the Patient tab.</div>', unsafe_allow_html=True)
 
     st.markdown('<div class="card">', unsafe_allow_html=True)
-    up = st.file_uploader("Upload CSV", type=["csv"], key="import_upload")
+    up = st.file_uploader("Upload CSV", type=["csv"], key="import_csv")
 
-    if up and st.button("Process upload", key="import_process"):
+    if up and st.button("Process upload", key="import_btn"):
         msg, count = process_upload(up, show_debug=show_debug)
         if msg == "Success":
             st.success(f"Imported {count} rows.")
