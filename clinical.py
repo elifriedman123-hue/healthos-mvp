@@ -7,9 +7,9 @@ from io import StringIO
 
 # --- 1. CONFIGURATION ---
 st.set_page_config(
-    page_title="HealthOS Pro", 
-    layout="wide", 
-    initial_sidebar_state="collapsed" 
+    page_title="HealthOS Pro",
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
 # --- 2. SESSION STATE ---
@@ -17,34 +17,140 @@ if 'data' not in st.session_state:
     st.session_state['data'] = pd.DataFrame(columns=['Date', 'Marker', 'Value', 'Unit'])
 if 'events' not in st.session_state:
     st.session_state['events'] = pd.DataFrame(columns=['Date', 'Event', 'Type', 'Notes'])
+if 'patient' not in st.session_state:
+    # Demo patient metadata (for the “serious product” vibe)
+    st.session_state['patient'] = {"name": "Patient Demo", "sex": "M", "age": 47}
 
-# --- 3. STYLING ---
+# --- 3. LIGHT CLINICAL THEME (APPLE-LIKE) ---
 st.markdown("""
-    <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap');
-    [data-testid="stAppViewContainer"] { background-color: #000000; color: #E4E4E7; font-family: 'Inter', sans-serif; }
-    [data-testid="stHeader"] { display: none; }
-    .block-container { padding-top: 2rem; padding-bottom: 5rem; }
-    
-    div[role="radiogroup"] { background-color: #09090B; padding: 4px; border-radius: 12px; border: 1px solid #27272A; }
-    div[role="radiogroup"] label { background-color: transparent; border: 1px solid transparent; border-radius: 8px; }
-    div[role="radiogroup"] label:hover { background-color: #18181B; }
-    div[role="radiogroup"] label[data-checked="true"] { background-color: #18181B; border: 1px solid #3F3F46; box-shadow: 0 0 25px rgba(255, 255, 255, 0.05); }
-    div[role="radiogroup"] label > div[data-testid="stMarkdownContainer"] > p { font-family: 'JetBrains Mono'; font-size: 11px; color: #52525B; letter-spacing: 1.5px; }
-    div[role="radiogroup"] label[data-checked="true"] > div[data-testid="stMarkdownContainer"] > p { color: #FAFAFA; }
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
-    .hud-card { background: linear-gradient(180deg, rgba(24, 24, 27, 0.4) 0%, rgba(9, 9, 11, 0.4) 100%); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 16px; padding: 20px; text-align: center; }
-    .hud-val { font-family: 'JetBrains Mono'; font-size: 32px; font-weight: 700; color: #FAFAFA; letter-spacing: -1.5px; }
-    .hud-label { font-family: 'JetBrains Mono'; font-size: 10px; letter-spacing: 1.5px; color: #52525B; margin-top: 8px; font-weight: 700; text-transform: uppercase; }
+:root{
+  --bg: #F7F9FB;
+  --card: #FFFFFF;
+  --text: #0F172A;
+  --muted: #64748B;
+  --border: rgba(15,23,42,0.10);
+  --shadow: 0 8px 30px rgba(15,23,42,0.06);
+  --primary: #2563EB;
 
-    .clinical-row { background: rgba(15, 15, 17, 0.6); border-left: 2px solid #333; padding: 16px 20px; margin-bottom: 8px; border-radius: 0 8px 8px 0; border: 1px solid rgba(255,255,255,0.02); display: flex; justify-content: space-between; align-items: center; }
-    .c-marker { font-family: 'Inter'; font-weight: 500; font-size: 14px; color: #D4D4D8; }
-    .c-sub { font-size: 11px; color: #52525B; margin-top: 4px; font-family: 'JetBrains Mono'; }
-    .c-value { font-family: 'JetBrains Mono'; font-weight: 700; font-size: 16px; }
-    
-    div.stButton > button { width: 100%; border-radius: 8px; font-family: 'Inter'; font-weight: 600; background: #18181B; border: 1px solid #27272A; color: #A1A1AA; }
-    div.stButton > button:hover { border-color: #EF4444; color: #EF4444; }
-    </style>
+  --ok: #16A34A;          /* in range */
+  --optimal: #2563EB;     /* optimal */
+  --warn: #F59E0B;        /* borderline */
+  --bad: #DC2626;         /* out of range */
+
+  --chip-bg: rgba(15,23,42,0.04);
+}
+
+html, body, [class*="css"]  { font-family: 'Inter', sans-serif; }
+[data-testid="stAppViewContainer"] { background: var(--bg); }
+[data-testid="stHeader"] { display:none; }
+#MainMenu, footer { visibility: hidden; }
+
+.block-container { padding-top: 1.25rem; padding-bottom: 3rem; max-width: 1250px; }
+[data-testid="stSidebar"] { background: #FFFFFF; border-right: 1px solid var(--border); }
+[data-testid="stSidebar"] .block-container { padding-top: 1rem; }
+
+.hos-topbar{
+  display:flex; align-items:center; justify-content:space-between;
+  padding: 14px 16px; background: rgba(255,255,255,0.85);
+  border: 1px solid var(--border); border-radius: 16px;
+  box-shadow: var(--shadow); backdrop-filter: blur(10px);
+  margin-bottom: 18px;
+}
+.brand{
+  display:flex; flex-direction:column; gap:2px;
+}
+.brand h1{ margin:0; font-size: 20px; letter-spacing:-0.02em; color: var(--text); font-weight: 700; }
+.brand .sub{ margin:0; font-size: 12px; color: var(--muted); }
+.meta{
+  display:flex; gap:10px; align-items:center; flex-wrap:wrap; justify-content:flex-end;
+}
+.pill{
+  display:inline-flex; align-items:center; gap:8px;
+  padding: 8px 10px; border-radius: 999px;
+  border: 1px solid var(--border); background: #FFFFFF;
+  color: var(--text); font-size: 12px;
+}
+.pill strong{ font-weight: 700; }
+.pill .dot{ width:8px; height:8px; border-radius:999px; background: var(--ok); }
+
+.primary-btn{
+  display:inline-flex; align-items:center; gap:8px;
+  padding: 9px 12px; border-radius: 12px;
+  background: var(--primary); color: white; border: 1px solid rgba(0,0,0,0.06);
+  font-size: 12px; font-weight: 600;
+}
+
+.section-title{
+  margin: 12px 0 8px 0; font-size: 13px; font-weight: 700;
+  color: var(--text); letter-spacing: -0.01em;
+}
+
+.card{
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 16px; box-shadow: var(--shadow);
+  padding: 14px 14px;
+}
+
+.kpi-grid{
+  display:grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+  margin: 10px 0 18px 0;
+}
+@media (max-width: 1100px){
+  .kpi-grid{ grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+.kpi{
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 16px; padding: 14px; box-shadow: var(--shadow);
+}
+.kpi .label{ font-size: 12px; color: var(--muted); margin-bottom: 6px; font-weight: 600; }
+.kpi .val{ font-size: 28px; color: var(--text); font-weight: 800; letter-spacing: -0.03em; }
+.kpi .hint{ font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+.row{
+  display:flex; justify-content:space-between; align-items:center;
+  padding: 12px 12px; border-radius: 14px;
+  border: 1px solid var(--border);
+  background: #FFFFFF;
+}
+.row + .row{ margin-top: 8px; }
+.row-left{ display:flex; flex-direction:column; gap:4px; }
+.row-title{ font-size: 13px; font-weight: 700; color: var(--text); }
+.row-sub{ font-size: 11px; color: var(--muted); display:flex; gap:8px; flex-wrap:wrap; }
+.row-right{ text-align:right; display:flex; flex-direction:column; gap:4px; }
+.row-val{ font-size: 14px; font-weight: 800; color: var(--text); }
+.row-delta{ font-size: 11px; color: var(--muted); }
+
+.chip{
+  display:inline-flex; align-items:center; padding: 4px 8px;
+  border-radius: 999px; border: 1px solid var(--border);
+  background: var(--chip-bg); font-size: 11px; font-weight: 700;
+}
+.chip.optimal{ color: var(--optimal); }
+.chip.ok{ color: var(--ok); }
+.chip.warn{ color: var(--warn); }
+.chip.bad{ color: var(--bad); }
+
+div.stButton > button{
+  border-radius: 12px !important;
+  border: 1px solid var(--border) !important;
+  background: #FFFFFF !important;
+  color: var(--text) !important;
+  font-weight: 700 !important;
+}
+div.stButton > button:hover{
+  border-color: rgba(37,99,235,0.35) !important;
+  color: var(--primary) !important;
+}
+
+.small-muted{ font-size: 11px; color: var(--muted); }
+
+</style>
 """, unsafe_allow_html=True)
 
 # --- 4. DATA LOGIC ---
@@ -74,28 +180,30 @@ def parse_flexible_date(date_str):
 def get_data():
     results = st.session_state['data'].copy()
     events = st.session_state['events'].copy()
-    
+
     if not results.empty:
         results['Date'] = results['Date'].apply(parse_flexible_date)
         results['CleanMarker'] = results['Marker'].apply(clean_marker_name)
         results['NumericValue'] = results['Value'].apply(clean_numeric_value)
         results['Fingerprint'] = results['Date'].astype(str) + "_" + results['CleanMarker'] + "_" + results['NumericValue'].astype(str)
         results = results.drop_duplicates(subset=['Fingerprint'], keep='last')
-    
+
     if not events.empty:
         events['Date'] = events['Date'].apply(parse_flexible_date)
-        
+
     return results, events
 
-def process_upload(uploaded_file):
+def process_upload(uploaded_file, show_debug=False):
     try:
-        try: df_new = pd.read_csv(uploaded_file, sep=None, engine='python')
+        try:
+            df_new = pd.read_csv(uploaded_file, sep=None, engine='python')
         except:
             uploaded_file.seek(0)
             df_new = pd.read_csv(uploaded_file, encoding='ISO-8859-1')
-        
-        with st.expander("🔍 Debug: View Raw Upload", expanded=True):
-            st.dataframe(df_new.head())
+
+        if show_debug:
+            with st.expander("Debug: raw upload preview", expanded=False):
+                st.dataframe(df_new.head())
 
         df_new.columns = df_new.columns.str.strip().str.lower()
         rename_dict = {}
@@ -108,14 +216,16 @@ def process_upload(uploaded_file):
         df_new = df_new.rename(columns=rename_dict)
         needed = ['Date', 'Marker', 'Value']
         missing = [x for x in needed if x not in df_new.columns]
-        if missing: return f"❌ Missing columns: {missing}. Found: {df_new.columns.tolist()}", 0
+        if missing:
+            return f"Missing columns: {missing}. Found: {df_new.columns.tolist()}", 0
 
         if 'Unit' not in df_new.columns: df_new['Unit'] = ""
         df_new = df_new[needed + ['Unit']]
         st.session_state['data'] = pd.concat([st.session_state['data'], df_new], ignore_index=True)
         return "Success", len(df_new)
 
-    except Exception as e: return f"Error: {str(e)}", 0
+    except Exception as e:
+        return f"Error: {str(e)}", 0
 
 def add_clinical_event(date, name, type, note):
     new_event = pd.DataFrame([{"Date": str(date), "Event": name, "Type": type, "Notes": note}])
@@ -145,11 +255,11 @@ def get_master_data():
 # --- 6. UTILS ---
 def fuzzy_match(marker, master):
     lab_clean = clean_marker_name(marker)
-    # Exact
     for _, row in master.iterrows():
         keywords = [clean_marker_name(k) for k in str(row['Fuzzy Match Keywords']).split(",")]
-        if lab_clean in keywords: return row
-    # Fuzzy
+        if lab_clean in keywords:
+            return row
+
     best_score = 0
     best_row = None
     for _, row in master.iterrows():
@@ -162,7 +272,7 @@ def fuzzy_match(marker, master):
     return best_row if best_score > 0.85 else None
 
 def parse_range(range_str):
-    if pd.isna(range_str): return 0,0
+    if pd.isna(range_str): return 0, 0
     clean = str(range_str).replace('–', '-').replace(',', '.')
     parts = re.findall(r"[-+]?\d*\.\d+|\d+", clean)
     if len(parts) >= 2: return float(parts[0]), float(parts[1])
@@ -171,16 +281,51 @@ def parse_range(range_str):
 def get_status(val, master_row):
     try:
         s_min, s_max = parse_range(master_row['Standard Range'])
-        try: o_min, o_max = float(master_row.get('Optimal Min', 0)), float(master_row.get('Optimal Max', 0))
-        except: o_min, o_max = 0, 0
-        if "PSA" in str(master_row['Biomarker']).upper() and val > 4: return "OUT OF RANGE", "#FF3B30", 1
-        if s_min > 0 and (val < s_min or val > s_max): return "OUT OF RANGE", "#FF3B30", 1
-        if (o_min > 0 and val < o_min) or (o_max > 0 and val > o_max): return "BORDERLINE", "#FF9500", 2
-        if (o_min > 0 or o_max > 0): return "OPTIMAL", "#007AFF", 3
-        return "IN RANGE", "#34C759", 4
-    except: return "ERROR", "#8E8E93", 5
+        try:
+            o_min, o_max = float(master_row.get('Optimal Min', 0)), float(master_row.get('Optimal Max', 0))
+        except:
+            o_min, o_max = 0, 0
 
-# --- 7. CHART ENGINE ---
+        # Priority: 1 = action, 2 = borderline, 3 = optimal, 4 = in range
+        if "PSA" in str(master_row['Biomarker']).upper() and val > 4:
+            return "OUT OF RANGE", "bad", 1
+        if s_min > 0 and (val < s_min or val > s_max):
+            return "OUT OF RANGE", "bad", 1
+        if (o_min > 0 and val < o_min) or (o_max > 0 and val > o_max):
+            return "BORDERLINE", "warn", 2
+        if (o_min > 0 or o_max > 0):
+            return "OPTIMAL", "optimal", 3
+        return "IN RANGE", "ok", 4
+    except:
+        return "ERROR", "warn", 5
+
+def status_chip(status_key: str, label: str) -> str:
+    return f'<span class="chip {status_key}">{label}</span>'
+
+def format_value(v, unit=""):
+    v = str(v).strip()
+    u = str(unit).strip()
+    return f"{v} {u}".strip()
+
+def calc_delta(marker_clean, results, current_date):
+    # Compare current value vs previous measurement for same marker
+    df = results[(results['CleanMarker'] == marker_clean) & results['Date'].notna()].copy()
+    df = df.sort_values('Date')
+    cur = df[df['Date'] == current_date]
+    if cur.empty: 
+        return None
+    idx = cur.index[-1]
+    # find previous row
+    prev_df = df[df['Date'] < current_date]
+    if prev_df.empty:
+        return None
+    prev = prev_df.iloc[-1]['NumericValue']
+    curv = df.loc[idx, 'NumericValue']
+    if pd.isna(prev) or pd.isna(curv):
+        return None
+    return curv - prev
+
+# --- 7. CHART ENGINE (CLINICAL STYLE) ---
 def calculate_stagger(events_df, days_threshold=20):
     if events_df.empty: return events_df
     events_df = events_df.sort_values('Date').copy()
@@ -197,180 +342,342 @@ def calculate_stagger(events_df, days_threshold=20):
                 events_df.at[idx, 'lane'] = lane
                 lane_end_dates[lane] = current_date
                 assigned = True
-            else: lane += 1
+            else:
+                lane += 1
     return events_df
 
 def plot_chart(marker, results, events, master):
     df = results[results['CleanMarker'] == clean_marker_name(marker)].copy()
     df = df.dropna(subset=['NumericValue', 'Date']).sort_values('Date')
-    if df.empty: return None
+    if df.empty:
+        return None
 
-    min_date, max_date = df['Date'].min(), df['Date'].max()
-    date_span = (max_date - min_date).days
-    if date_span < 10: date_span = 30
-    
     min_val, max_val = 0, 0
     m_row = fuzzy_match(marker, master)
     unit_label = "Value"
-    if m_row is not None: 
+    if m_row is not None:
         min_val, max_val = parse_range(m_row['Standard Range'])
         unit_label = m_row['Unit'] if pd.notna(m_row['Unit']) else "Value"
-        
-    d_max = df['NumericValue'].max()
-    y_top = max(d_max, max_val) * 1.35
 
-    # DATA CHART
+    # y scale
+    d_max = df['NumericValue'].max()
+    y_top = max(d_max, max_val) * 1.25 if max(d_max, max_val) > 0 else 1
+    y_bottom = 0
+
     base = alt.Chart(df).encode(
-        x=alt.X('Date:T', title=None, axis=alt.Axis(format='%d %b %y', labelColor='#71717A', tickColor='#27272A')),
-        y=alt.Y('NumericValue:Q', title=unit_label, scale=alt.Scale(domain=[0, y_top]), axis=alt.Axis(labelColor='#71717A', tickColor='#27272A', gridColor='#27272A', gridOpacity=0.2))
+        x=alt.X(
+            'Date:T',
+            title=None,
+            axis=alt.Axis(
+                format='%d %b %y',
+                labelColor='#64748B',
+                tickColor='rgba(15,23,42,0.15)',
+                grid=False
+            )
+        ),
+        y=alt.Y(
+            'NumericValue:Q',
+            title=unit_label,
+            scale=alt.Scale(domain=[y_bottom, y_top]),
+            axis=alt.Axis(
+                labelColor='#64748B',
+                tickColor='rgba(15,23,42,0.15)',
+                gridColor='rgba(15,23,42,0.08)',
+                gridOpacity=1
+            )
+        )
     )
 
-    danger_low = alt.Chart(pd.DataFrame({'y':[0], 'y2':[min_val]})).mark_rect(color='#EF4444', opacity=0.1).encode(y='y', y2='y2') if min_val>0 else None
-    optimal_band = alt.Chart(pd.DataFrame({'y':[min_val], 'y2':[max_val]})).mark_rect(color='#10B981', opacity=0.1).encode(y='y', y2='y2') if max_val>0 else None
-    danger_high = alt.Chart(pd.DataFrame({'y':[max_val], 'y2':[y_top]})).mark_rect(color='#EF4444', opacity=0.1).encode(y='y', y2='y2') if max_val>0 else None
-    
-    blood_dates = base.mark_rule(color='#38BDF8', strokeDash=[2, 2], strokeWidth=1, opacity=0.3).encode(x='Date:T')
-    glow = base.mark_line(color='#38BDF8', strokeWidth=6, opacity=0.3, interpolate='monotone')
-    line = base.mark_line(color='#38BDF8', strokeWidth=3, interpolate='monotone')
-    points = base.mark_circle(size=80, fill='#000000', stroke='#38BDF8', strokeWidth=2, opacity=1).encode(
-        tooltip=[alt.Tooltip('Date:T', format='%d %b %Y'), alt.Tooltip('NumericValue:Q', title=marker)]
+    # Reference band (soft)
+    ref_band = None
+    if max_val > 0:
+        ref_band = alt.Chart(pd.DataFrame({'y':[min_val], 'y2':[max_val]})).mark_rect(
+            color='#16A34A', opacity=0.08
+        ).encode(y='y', y2='y2')
+
+    # Line + points
+    line = base.mark_line(color='#2563EB', strokeWidth=3, interpolate='monotone')
+    points = base.mark_circle(size=70, fill='#FFFFFF', stroke='#2563EB', strokeWidth=2).encode(
+        tooltip=[
+            alt.Tooltip('Date:T', format='%d %b %Y'),
+            alt.Tooltip('NumericValue:Q', title=marker)
+        ]
     )
 
     layers = []
-    if danger_low: layers.append(danger_low)
-    if optimal_band: layers.append(optimal_band)
-    if danger_high: layers.append(danger_high)
-    layers.extend([glow, line, points])
+    if ref_band: layers.append(ref_band)
+    layers.extend([line, points])
 
-    # EVENTS (Manual Scale Injection)
+    # Events: clean vertical markers + label pills
     if not events.empty:
-        staggered_events = calculate_stagger(events, days_threshold=int(date_span*0.15))
-        
-        lane_height = y_top * 0.08
-        staggered_events['box_top'] = y_top - (staggered_events['lane'] * lane_height * 1.3) - (y_top * 0.02)
-        staggered_events['box_bottom'] = staggered_events['box_top'] - lane_height
-        staggered_events['box_mid'] = staggered_events['box_top'] - (lane_height / 2)
-        
-        box_width_days = max(15, int(date_span * 0.12))
-        staggered_events['start'] = staggered_events['Date'] - pd.to_timedelta(box_width_days/2, unit='D')
-        staggered_events['end'] = staggered_events['Date'] + pd.to_timedelta(box_width_days/2, unit='D')
+        ev = events.dropna(subset=['Date']).copy()
+        if not ev.empty:
+            min_date, max_date = df['Date'].min(), df['Date'].max()
+            date_span = max((max_date - min_date).days, 30)
+            staggered = calculate_stagger(ev, days_threshold=int(date_span * 0.12))
 
-        ev_rule = alt.Chart(staggered_events).mark_rule(color='#EF4444', strokeWidth=1, strokeDash=[4, 4], opacity=0.5).encode(
-            x='Date:T', y=alt.value(0), y2=alt.value(300)
-        )
-        layers.append(ev_rule)
+            lane_height = y_top * 0.07
+            staggered['y_text'] = y_top - (staggered['lane'] * lane_height) - (y_top * 0.05)
 
-        ev_box = alt.Chart(staggered_events).mark_rect(
-            fill="#000000", stroke="#EF4444", strokeDash=[2, 2], strokeWidth=2, opacity=1
-        ).encode(
-            x='start:T', x2='end:T',
-            y='box_top:Q', y2='box_bottom:Q'
-        )
-        layers.append(ev_box)
-        
-        ev_txt = alt.Chart(staggered_events).mark_text(
-            align='center', baseline='middle', color='#EF4444', font='JetBrains Mono', fontSize=10, fontWeight=700
-        ).encode(
-            x='Date:T', y='box_mid:Q', text='Event'
-        )
-        layers.append(ev_txt)
+            # vertical marker
+            ev_rule = alt.Chart(staggered).mark_rule(
+                color='rgba(15,23,42,0.25)', strokeWidth=1
+            ).encode(x='Date:T')
+            layers.append(ev_rule)
 
-    return alt.layer(*layers).properties(height=320, background='transparent').configure_view(strokeWidth=0)
+            # label
+            ev_txt = alt.Chart(staggered).mark_text(
+                align='left', baseline='middle', dx=6,
+                fontSize=11, fontWeight=600, color='#0F172A'
+            ).encode(
+                x='Date:T',
+                y='y_text:Q',
+                text='Event'
+            )
+            layers.append(ev_txt)
 
-# --- 8. UI ---
+    return alt.layer(*layers).properties(
+        height=340,
+        background='#FFFFFF'
+    ).configure_view(strokeWidth=0).configure_axis(
+        titleColor='#64748B'
+    )
+
+# --- 8. UI SHELL ---
 master = get_master_data()
 results, events = get_data()
+patient = st.session_state['patient']
 
-st.markdown("""<div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #333; padding-bottom:10px; margin-bottom:10px;">
-    <div><h2 style="margin:0; font-family:'Inter'; font-weight:700; letter-spacing:-1px;">HealthOS <span style="color:#71717A;">PRO</span></h2></div>
-    <div><span class="tag" style="background:#064E3B; color:#34D399; border:1px solid #059669;">PATIENT: DEMO</span></div></div>""", unsafe_allow_html=True)
+def last_lab_date(results_df):
+    if results_df.empty or results_df['Date'].dropna().empty:
+        return None
+    return results_df['Date'].dropna().max()
 
-nav = st.radio("NAV", ["DASHBOARD", "TREND ANALYSIS", "PROTOCOL LOG", "DATA TOOLS"], horizontal=True, label_visibility="collapsed")
+last_date = last_lab_date(results)
+last_date_str = last_date.strftime('%d %b %Y') if last_date is not None else "—"
 
-if nav == "DASHBOARD":
-    if results.empty: st.info("No Data loaded. Go to 'DATA TOOLS' to upload CSV."); st.stop()
+# Top bar
+st.markdown(f"""
+<div class="hos-topbar">
+  <div class="brand">
+    <h1>HealthOS <span style="color:#64748B;font-weight:700;">PRO</span></h1>
+    <div class="sub">Clinical Intelligence Platform</div>
+  </div>
+  <div class="meta">
+    <span class="pill"><span class="dot"></span><strong>{patient['name']}</strong>&nbsp;• {patient['sex']}, {patient['age']}</span>
+    <span class="pill">Last Lab: <strong>{last_date_str}</strong></span>
+  </div>
+</div>
+""", unsafe_allow_html=True)
+
+# Sidebar nav (proper SaaS)
+with st.sidebar:
+    st.markdown("### Navigation")
+    nav = st.radio(
+        "NAV",
+        ["Dashboard", "Trends", "Interventions", "Import"],
+        label_visibility="collapsed"
+    )
+    st.markdown("---")
+    st.markdown("**Demo Mode**")
+    show_debug = st.toggle("Show debug tools", value=False)
+    st.markdown('<div class="small-muted">Tip: keep debug off during doctor demos.</div>', unsafe_allow_html=True)
+
+# --- DASHBOARD ---
+if nav == "Dashboard":
+    if results.empty:
+        st.markdown('<div class="card">', unsafe_allow_html=True)
+        st.markdown("### Upload your first lab to begin")
+        st.markdown("This dashboard normalizes results across labs and highlights what needs attention.")
+        st.markdown('</div>', unsafe_allow_html=True)
+        st.stop()
+
     dates = sorted(results['Date'].dropna().unique(), reverse=True)
-    sel_date = st.selectbox("REPORT DATE", [d.strftime('%d %b %Y').upper() for d in dates])
-    subset = results[results['Date'].dt.strftime('%d %b %Y').str.upper() == sel_date].copy()
-    rows, counts = [], {1:0, 2:0, 3:0, 4:0}
+    sel_date = st.selectbox(
+        "Report date",
+        dates,
+        format_func=lambda d: d.strftime('%d %b %Y')
+    )
+    subset = results[results['Date'] == sel_date].copy()
+
+    rows = []
+    counts = {"bad":0, "warn":0, "optimal":0, "ok":0}
     for _, r in subset.iterrows():
         m_row = fuzzy_match(r['Marker'], master)
-        if m_row is not None:
-            stat, col, prio = get_status(r['NumericValue'], m_row)
-            if prio in counts: counts[prio] += 1
-            rows.append({'Marker': m_row['Biomarker'], 'Value': r['Value'], 'Status': stat, 'Color': col, 'Prio': prio})
-    
-    st.markdown(f"""<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(120px, 1fr)); gap:10px; margin-bottom:20px;">
-        <div class="hud-card"><div class="hud-val" style="color:#FAFAFA">{len(rows)}</div><div class="hud-label">TESTED</div></div>
-        <div class="hud-card"><div class="hud-val" style="color:#007AFF">{counts[3]}</div><div class="hud-label">OPTIMAL</div></div>
-        <div class="hud-card"><div class="hud-val" style="color:#34C759">{counts[4]}</div><div class="hud-label">NORMAL</div></div>
-        <div class="hud-card"><div class="hud-val" style="color:#FF9500">{counts[2]}</div><div class="hud-label">BORDERLINE</div></div>
-        <div class="hud-card"><div class="hud-val" style="color:#FF3B30">{counts[1]}</div><div class="hud-label">ACTION</div></div>
-    </div>""", unsafe_allow_html=True)
+        if m_row is None or pd.isna(r['NumericValue']):
+            continue
 
-    c1, c2 = st.columns(2)
+        status_label, status_key, prio = get_status(r['NumericValue'], m_row)
+        counts[status_key] = counts.get(status_key, 0) + 1
+
+        s_min, s_max = parse_range(m_row['Standard Range'])
+        unit = m_row['Unit'] if pd.notna(m_row['Unit']) else (r.get('Unit', '') or '')
+        delta = calc_delta(r['CleanMarker'], results, sel_date)
+
+        rows.append({
+            "Marker": m_row['Biomarker'],
+            "MarkerClean": r['CleanMarker'],
+            "Value": r['NumericValue'],
+            "ValueRaw": r['Value'],
+            "Unit": unit,
+            "StatusLabel": status_label,
+            "StatusKey": status_key,
+            "Prio": prio,
+            "Ref": f"{s_min:g}–{s_max:g} {unit}".strip(),
+            "Delta": delta
+        })
+
+    # KPI summary
+    st.markdown(f"""
+    <div class="kpi-grid">
+      <div class="kpi"><div class="label">Total tested</div><div class="val">{len(rows)}</div><div class="hint">Biomarkers detected</div></div>
+      <div class="kpi"><div class="label">Optimal</div><div class="val" style="color:var(--optimal)">{counts.get("optimal",0)}</div><div class="hint">Within optimal band</div></div>
+      <div class="kpi"><div class="label">In range</div><div class="val" style="color:var(--ok)">{counts.get("ok",0)}</div><div class="hint">Within reference</div></div>
+      <div class="kpi"><div class="label">Borderline</div><div class="val" style="color:var(--warn)">{counts.get("warn",0)}</div><div class="hint">Watch & adjust</div></div>
+      <div class="kpi"><div class="label">Needs attention</div><div class="val" style="color:var(--bad)">{counts.get("bad",0)}</div><div class="hint">Out of range</div></div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # Split view
+    c1, c2 = st.columns(2, gap="large")
+
+    def render_rows(title, filter_fn):
+        st.markdown(f'<div class="section-title">{title}</div>', unsafe_allow_html=True)
+        st.markdown('<div class="card">', unsafe_allow_html=True)
+        shown = 0
+        for r in sorted(rows, key=lambda x: x['Prio']):
+            if not filter_fn(r):
+                continue
+            shown += 1
+
+            delta_txt = ""
+            if r["Delta"] is not None:
+                arrow = "↑" if r["Delta"] > 0 else "↓"
+                delta_txt = f"{arrow} {abs(r['Delta']):g} vs previous"
+
+            st.markdown(
+                f"""
+                <div class="row">
+                  <div class="row-left">
+                    <div class="row-title">{r['Marker']}</div>
+                    <div class="row-sub">
+                      {status_chip(r['StatusKey'], r['StatusLabel'])}
+                      <span>Ref: {r['Ref']}</span>
+                    </div>
+                  </div>
+                  <div class="row-right">
+                    <div class="row-val">{r['Value']:g} {r['Unit']}</div>
+                    <div class="row-delta">{delta_txt}</div>
+                  </div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+        if shown == 0:
+            st.markdown('<div class="small-muted">Nothing in this section for this report date.</div>', unsafe_allow_html=True)
+
+        st.markdown('</div>', unsafe_allow_html=True)
+
     with c1:
-        st.markdown('<div class="section-header">Attention Required</div>', unsafe_allow_html=True)
-        for r in sorted(rows, key=lambda x: x['Prio']):
-            if r['Prio'] <= 2:
-                st.markdown(f"""<div class="clinical-row" style="border-left-color:{r['Color']}">
-                <div><div class="c-marker">{r['Marker']}</div><div class="c-sub" style="color:{r['Color']}">{r['Status']}</div></div>
-                <div class="c-value" style="color:{r['Color']}">{r['Value']}</div></div>""", unsafe_allow_html=True)
-    with c2:
-        st.markdown('<div class="section-header">Optimized</div>', unsafe_allow_html=True)
-        for r in sorted(rows, key=lambda x: x['Prio']):
-            if r['Prio'] > 2:
-                st.markdown(f"""<div class="clinical-row" style="border-left-color:{r['Color']}">
-                <div><div class="c-marker">{r['Marker']}</div><div class="c-sub">{r['Status']}</div></div>
-                <div class="c-value">{r['Value']}</div></div>""", unsafe_allow_html=True)
+        render_rows("Attention required", lambda r: r["StatusKey"] in ["bad", "warn"])
 
-elif nav == "TREND ANALYSIS":
-    if results.empty: st.warning("No Data."); st.stop()
+    with c2:
+        render_rows("Stable / optimized", lambda r: r["StatusKey"] in ["optimal", "ok"])
+
+# --- TRENDS ---
+elif nav == "Trends":
+    if results.empty:
+        st.warning("No data loaded yet. Go to Import.")
+        st.stop()
+
     markers = sorted(results['CleanMarker'].unique())
     defaults = [m for m in ['TOTAL TESTOSTERONE', 'HAEMATOCRIT', 'PSA', 'FERRITIN', 'LDL CHOLESTEROL'] if m in markers]
-    sel = st.multiselect("Select Biomarkers", markers, default=defaults)
-    for m in sel:
-        st.markdown(f"#### {m}")
-        ch = plot_chart(m, results, events, master)
-        if ch: st.altair_chart(ch, use_container_width=True)
-        else: st.warning(f"No numeric data for {m}")
+    sel = st.multiselect("Select biomarkers", markers, default=defaults)
 
-elif nav == "PROTOCOL LOG":
+    for m in sel:
+        st.markdown(f"### {m}")
+        ch = plot_chart(m, results, events, master)
+        if ch:
+            st.altair_chart(ch, use_container_width=True)
+        else:
+            st.info(f"No numeric data for {m}")
+
+# --- INTERVENTIONS (timeline-like) ---
+elif nav == "Interventions":
+    st.markdown("### Interventions timeline")
+    st.markdown('<div class="small-muted">Add medication/lifestyle/procedure events. These appear as markers on trend charts.</div>', unsafe_allow_html=True)
+
+    st.markdown('<div class="card">', unsafe_allow_html=True)
     with st.form("add_event"):
-        c1, c2, c3 = st.columns([1,2,1])
-        with c1: d = st.date_input("Date")
-        with c2: n = st.text_input("Event Name")
-        with c3: t = st.selectbox("Type", ["Medication", "Lifestyle", "Procedure"])
-        if st.form_submit_button("Add Event"):
+        c1, c2, c3 = st.columns([1, 2, 1])
+        with c1:
+            d = st.date_input("Date")
+        with c2:
+            n = st.text_input("Event name", placeholder="e.g., Start TRT 200mg/wk")
+        with c3:
+            t = st.selectbox("Type", ["Medication", "Lifestyle", "Procedure"])
+        if st.form_submit_button("Add event"):
             add_clinical_event(d, n, t, "")
-            st.success("Added"); st.rerun()
-    
-    # LIST WITH DELETE BUTTONS
-    if not events.empty:
-        st.markdown("### Active Interventions")
-        # Header
-        h1, h2, h3, h4 = st.columns([2, 3, 2, 1])
-        h1.markdown("**Date**"); h2.markdown("**Event**"); h3.markdown("**Type**")
-        
-        for i, row in events.iterrows():
-            c1, c2, c3, c4 = st.columns([2, 3, 2, 1])
-            with c1: st.write(row['Date'].strftime('%d %b %Y'))
-            with c2: st.write(row['Event'])
-            with c3: st.write(row['Type'])
-            with c4: 
-                if st.button("🗑️", key=f"del_{i}"):
+            st.success("Added")
+            st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    if events.empty:
+        st.markdown('<div class="card"><div class="small-muted">No interventions yet.</div></div>', unsafe_allow_html=True)
+    else:
+        ev = events.dropna(subset=['Date']).sort_values('Date')
+        st.markdown('<div class="card">', unsafe_allow_html=True)
+        for i, row in ev.iterrows():
+            st.markdown(
+                f"""
+                <div class="row">
+                  <div class="row-left">
+                    <div class="row-title">{row['Event']}</div>
+                    <div class="row-sub">
+                      <span class="chip ok">{row['Type']}</span>
+                      <span>{row['Date'].strftime('%d %b %Y')}</span>
+                    </div>
+                  </div>
+                  <div class="row-right">
+                    <div class="row-delta"></div>
+                  </div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+            colA, colB, colC = st.columns([8,1,1])
+            with colC:
+                if st.button("Delete", key=f"del_{i}"):
                     delete_event(i)
                     st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
 
-elif nav == "DATA TOOLS":
-    st.markdown('<div class="section-header">Data Pipeline</div>', unsafe_allow_html=True)
+# --- IMPORT ---
+elif nav == "Import":
+    st.markdown("### Import lab data")
+    st.markdown('<div class="small-muted">For the demo, upload your TRT story CSV. Later this becomes PDF/image upload.</div>', unsafe_allow_html=True)
+
+    st.markdown('<div class="card">', unsafe_allow_html=True)
     up = st.file_uploader("Upload CSV", type=['csv'])
-    if up and st.button("Process Batch"):
-        msg, count = process_upload(up)
-        if msg=="Success": st.success(f"Processed {count} rows. Please refresh."); st.rerun()
-        else: st.error(msg)
-        
-    st.markdown("---")
-    if st.button("⚠️ WIPE SESSION"):
-        wipe_db()
-        st.warning("Wiped."); st.rerun()
+    col1, col2 = st.columns([1, 1])
+    with col1:
+        if up and st.button("Process upload"):
+            msg, count = process_upload(up, show_debug=show_debug)
+            if msg == "Success":
+                st.success(f"Imported {count} rows.")
+                st.rerun()
+            else:
+                st.error(msg)
+
+    with col2:
+        st.markdown('<div class="small-muted">Tip: keep “Wipe” out of sight during demos.</div>', unsafe_allow_html=True)
+
+    if show_debug:
+        st.markdown("---")
+        if st.button("Wipe session (debug)"):
+            wipe_db()
+            st.warning("Wiped.")
+            st.rerun()
+
+    st.markdown('</div>', unsafe_allow_html=True)
