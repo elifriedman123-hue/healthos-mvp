@@ -23,6 +23,24 @@ if "events" not in st.session_state:
 if "patient" not in st.session_state:
     # Demo patient metadata for serious SaaS vibe
     st.session_state["patient"] = {"name": "Patient Demo", "sex": "M", "age": 47}
+    # --- 2. SESSION STATE ---
+if 'data' not in st.session_state:
+    st.session_state['data'] = pd.DataFrame(columns=['Date', 'Marker', 'Value', 'Unit'])
+if 'events' not in st.session_state:
+    st.session_state['events'] = pd.DataFrame(columns=['Date', 'Event', 'Type', 'Notes'])
+
+# ✅ ADD THIS:
+if 'patient' not in st.session_state:
+    st.session_state['patient'] = {
+        "name": "Demo Patient",
+        "age": 47,
+        "sex": "Male",
+        "height_cm": "",
+        "weight_kg": "",
+        "mrn": "",
+        "notes": ""
+    }
+
 
 # ---------------------------
 # 3) APPLE-LIKE LIGHT CLINICAL THEME (CSS)
