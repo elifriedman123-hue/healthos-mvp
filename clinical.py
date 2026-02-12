@@ -54,7 +54,11 @@ html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
 [data-testid="stHeader"] { display:none; }
 #MainMenu, footer { visibility: hidden; }
 
-.block-container { padding-top: 0.75rem; padding-bottom: 1.5rem; max-width: 1250px; }
+.block-container {
+    padding-top: 0.75rem;
+    padding-bottom: 1.5rem;
+    max-width: 100%;
+}
 
 [data-testid="stSidebar"] { background: #FFFFFF; border-right: 1px solid var(--border); }
 [data-testid="stSidebar"] .block-container { padding-top: 1rem; }
@@ -202,6 +206,20 @@ ul[role="listbox"] li:hover{ background: rgba(37,99,235,0.06) !important; }
 /* Reduce vertical whitespace between elements */
 [data-testid="stVerticalBlock"] { gap: 0.6rem; }
 h3 { margin-top: 0.6rem !important; margin-bottom: 0.4rem !important; }
+
+/* Reduce sidebar width */
+[data-testid="stSidebar"] {
+    width: 240px !important;
+}
+[data-testid="stSidebar"] > div:first-child {
+    width: 240px !important;
+}
+
+/* Remove internal horizontal padding */
+.block-container {
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
+}
 
 </style>
 """,
