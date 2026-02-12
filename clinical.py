@@ -754,16 +754,85 @@ elif nav == "Trends":
         st.stop()
 
     markers = sorted(results["CleanMarker"].unique())
-    defaults = [m for m in ["TOTAL TESTOSTERONE", "HAEMATOCRIT", "PSA", "FERRITIN", "LDL CHOLESTEROL"] if m in markers]
-    sel = st.multiselect("Select biomarkers", markers, default=defaults)
 
-    for m in sel:
-        st.markdown(f"### {m}")
-        ch = plot_chart(m, results, events, master)
+    # Default demo markers (only if they exist)
+    defaults = [m for m in ["TOTAL TESTOSTERONE", "FREE TESTOSTERONE", "OESTRADIOL", "HAEMATOCRIT", "PSA", "FERRITIN", "LDL CHOLESTEROL"] if m in markers]
+
+    # Layout controls
+    topA, topB, topC = st.columns([2.2, 1.2, 1.6], gap="large")
+    with topA:
+        sel = st.multiselect("Select biomarkers", markers, default=defaults)
+    with topB:
+        layout = st.segmented_control(
+            "Layout",
+            options=["Stacked", "2-column"],
+            default="2-column",
+        )
+    with topC:
+        # Compare pair: keeps two markers together (great for inverse relationships)
+        compare_mode = st.toggle("Compare pair", value=True)
+
+    if not sel:
+        st.info("Select at least one biomarker.")
+        st.stop()
+
+    # Optional compare pair selection
+    pair = []
+    if compare_mode:
+        c1, c2 = st.columns(2)
+        with c1:
+            p1 = st.selectbox("Compare: left", sel, index=0 if sel else None)
+        with c2:
+            p2 = st.selectbox("Compare: right", sel, index=1 if len(sel) > 1 else 0)
+        if p1 and p2 and p1 != p2:
+            pair = [p1, p2]
+
+    # Helper to render a chart section
+    def render_chart(marker_clean: str):
+        st.markdown(f"### {marker_clean}")
+        ch = plot_chart(marker_clean, results, events, master)
         if ch:
             st.altair_chart(ch, use_container_width=True)
         else:
-            st.info(f"No numeric data for {m}")
+            st.info(f"No numeric data for {marker_clean}")
+
+    # If layout is stacked: just render in order, but keep pair first if set
+    if layout == "Stacked":
+        already = set()
+
+        if pair:
+            for m in pair:
+                render_chart(m)
+                already.add(m)
+
+        for m in sel:
+            if m in already:
+                continue
+            render_chart(m)
+
+    # If layout is 2-column: render side-by-side cards
+    else:
+        # Start with compare pair row (if chosen)
+        used = set()
+
+        if pair:
+            colL, colR = st.columns(2, gap="large")
+            with colL:
+                render_chart(pair[0])
+            with colR:
+                render_chart(pair[1])
+            used.update(pair)
+
+        # Remaining markers in 2-column grid
+        remaining = [m for m in sel if m not in used]
+
+        for i in range(0, len(remaining), 2):
+            col1, col2 = st.columns(2, gap="large")
+            with col1:
+                render_chart(remaining[i])
+            with col2:
+                if i + 1 < len(remaining):
+                    render_chart(remaining[i + 1])
 
 elif nav == "Interventions":
     st.markdown("### Interventions timeline")
