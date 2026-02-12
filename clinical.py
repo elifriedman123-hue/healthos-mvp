@@ -43,6 +43,7 @@ st.markdown("""
     .c-value { font-family: 'JetBrains Mono'; font-weight: 700; font-size: 16px; }
     
     div.stButton > button { width: 100%; border-radius: 8px; font-family: 'Inter'; font-weight: 600; background: #18181B; border: 1px solid #27272A; color: #A1A1AA; }
+    div.stButton > button:hover { border-color: #EF4444; color: #EF4444; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -120,6 +121,9 @@ def add_clinical_event(date, name, type, note):
     new_event = pd.DataFrame([{"Date": str(date), "Event": name, "Type": type, "Notes": note}])
     st.session_state['events'] = pd.concat([st.session_state['events'], new_event], ignore_index=True)
 
+def delete_event(index):
+    st.session_state['events'] = st.session_state['events'].drop(index).reset_index(drop=True)
+
 def wipe_db():
     st.session_state['data'] = pd.DataFrame(columns=['Date', 'Marker', 'Value', 'Unit'])
     st.session_state['events'] = pd.DataFrame(columns=['Date', 'Event', 'Type', 'Notes'])
@@ -138,7 +142,7 @@ def get_master_data():
     ]
     return pd.DataFrame(data[1:], columns=data[0])
 
-# --- 6. UTILS (BEST SCORE) ---
+# --- 6. UTILS ---
 def fuzzy_match(marker, master):
     lab_clean = clean_marker_name(marker)
     # Exact
@@ -201,7 +205,6 @@ def plot_chart(marker, results, events, master):
     df = df.dropna(subset=['NumericValue', 'Date']).sort_values('Date')
     if df.empty: return None
 
-    # Params
     min_date, max_date = df['Date'].min(), df['Date'].max()
     date_span = (max_date - min_date).days
     if date_span < 10: date_span = 30
@@ -214,24 +217,21 @@ def plot_chart(marker, results, events, master):
         unit_label = m_row['Unit'] if pd.notna(m_row['Unit']) else "Value"
         
     d_max = df['NumericValue'].max()
-    y_top = max(d_max, max_val) * 1.35 # 35% headroom for boxes
+    y_top = max(d_max, max_val) * 1.35
 
-    # --- BASE DATA ---
+    # DATA CHART
     base = alt.Chart(df).encode(
         x=alt.X('Date:T', title=None, axis=alt.Axis(format='%d %b %y', labelColor='#71717A', tickColor='#27272A')),
         y=alt.Y('NumericValue:Q', title=unit_label, scale=alt.Scale(domain=[0, y_top]), axis=alt.Axis(labelColor='#71717A', tickColor='#27272A', gridColor='#27272A', gridOpacity=0.2))
     )
 
-    # Zones
     danger_low = alt.Chart(pd.DataFrame({'y':[0], 'y2':[min_val]})).mark_rect(color='#EF4444', opacity=0.1).encode(y='y', y2='y2') if min_val>0 else None
     optimal_band = alt.Chart(pd.DataFrame({'y':[min_val], 'y2':[max_val]})).mark_rect(color='#10B981', opacity=0.1).encode(y='y', y2='y2') if max_val>0 else None
     danger_high = alt.Chart(pd.DataFrame({'y':[max_val], 'y2':[y_top]})).mark_rect(color='#EF4444', opacity=0.1).encode(y='y', y2='y2') if max_val>0 else None
     
-    # --- VISIBLE DATA POINTS ---
+    blood_dates = base.mark_rule(color='#38BDF8', strokeDash=[2, 2], strokeWidth=1, opacity=0.3).encode(x='Date:T')
     glow = base.mark_line(color='#38BDF8', strokeWidth=6, opacity=0.3, interpolate='monotone')
     line = base.mark_line(color='#38BDF8', strokeWidth=3, interpolate='monotone')
-    
-    # Explicit Points to show Lab Dates
     points = base.mark_circle(size=80, fill='#000000', stroke='#38BDF8', strokeWidth=2, opacity=1).encode(
         tooltip=[alt.Tooltip('Date:T', format='%d %b %Y'), alt.Tooltip('NumericValue:Q', title=marker)]
     )
@@ -242,17 +242,15 @@ def plot_chart(marker, results, events, master):
     if danger_high: layers.append(danger_high)
     layers.extend([glow, line, points])
 
-    # --- EVENT LAYER (SCALED TO DATA) ---
+    # EVENTS (Manual Scale Injection)
     if not events.empty:
         staggered_events = calculate_stagger(events, days_threshold=int(date_span*0.15))
         
-        # Calculate Box Coords relative to Data Scale
         lane_height = y_top * 0.08
         staggered_events['box_top'] = y_top - (staggered_events['lane'] * lane_height * 1.3) - (y_top * 0.02)
         staggered_events['box_bottom'] = staggered_events['box_top'] - lane_height
         staggered_events['box_mid'] = staggered_events['box_top'] - (lane_height / 2)
         
-        # Width
         box_width_days = max(15, int(date_span * 0.12))
         staggered_events['start'] = staggered_events['Date'] - pd.to_timedelta(box_width_days/2, unit='D')
         staggered_events['end'] = staggered_events['Date'] + pd.to_timedelta(box_width_days/2, unit='D')
@@ -346,7 +344,23 @@ elif nav == "PROTOCOL LOG":
         if st.form_submit_button("Add Event"):
             add_clinical_event(d, n, t, "")
             st.success("Added"); st.rerun()
-    if not events.empty: st.dataframe(events, use_container_width=True)
+    
+    # LIST WITH DELETE BUTTONS
+    if not events.empty:
+        st.markdown("### Active Interventions")
+        # Header
+        h1, h2, h3, h4 = st.columns([2, 3, 2, 1])
+        h1.markdown("**Date**"); h2.markdown("**Event**"); h3.markdown("**Type**")
+        
+        for i, row in events.iterrows():
+            c1, c2, c3, c4 = st.columns([2, 3, 2, 1])
+            with c1: st.write(row['Date'].strftime('%d %b %Y'))
+            with c2: st.write(row['Event'])
+            with c3: st.write(row['Type'])
+            with c4: 
+                if st.button("🗑️", key=f"del_{i}"):
+                    delete_event(i)
+                    st.rerun()
 
 elif nav == "DATA TOOLS":
     st.markdown('<div class="section-header">Data Pipeline</div>', unsafe_allow_html=True)
