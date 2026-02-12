@@ -54,7 +54,7 @@ html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
 [data-testid="stHeader"] { display:none; }
 #MainMenu, footer { visibility: hidden; }
 
-.block-container { padding-top: 1.25rem; padding-bottom: 3rem; max-width: 1150px; }
+.block-container { padding-top: 0.75rem; padding-bottom: 1.5rem; max-width: 1250px; }
 
 [data-testid="stSidebar"] { background: #FFFFFF; border-right: 1px solid var(--border); }
 [data-testid="stSidebar"] .block-container { padding-top: 1rem; }
@@ -198,6 +198,10 @@ ul[role="listbox"]{
 }
 ul[role="listbox"] li{ color: #0F172A !important; }
 ul[role="listbox"] li:hover{ background: rgba(37,99,235,0.06) !important; }
+
+/* Reduce vertical whitespace between elements */
+[data-testid="stVerticalBlock"] { gap: 0.6rem; }
+h3 { margin-top: 0.6rem !important; margin-bottom: 0.4rem !important; }
 
 </style>
 """,
@@ -583,7 +587,7 @@ def plot_chart(marker, results, events, master):
 
             layers.extend([ev_rule, ev_txt])
 
-    return alt.layer(*layers).properties(height=360, background="#FFFFFF").configure_view(strokeWidth=0)
+    return alt.layer(*layers).properties(height=480, background="#FFFFFF").configure_view(strokeWidth=0)
 
 # ---------------------------
 # 8) UI SHELL
