@@ -23,11 +23,7 @@ if "events" not in st.session_state:
 if "patient" not in st.session_state:
     # Demo patient metadata for serious SaaS vibe
     st.session_state["patient"] = {"name": "Patient Demo", "sex": "M", "age": 47}
-    # --- 2. SESSION STATE ---
-if 'data' not in st.session_state:
-    st.session_state['data'] = pd.DataFrame(columns=['Date', 'Marker', 'Value', 'Unit'])
-if 'events' not in st.session_state:
-    st.session_state['events'] = pd.DataFrame(columns=['Date', 'Event', 'Type', 'Notes'])
+
 
 # ✅ ADD THIS:
 if 'patient' not in st.session_state:
@@ -242,6 +238,26 @@ h3 { margin-top: 0.6rem !important; margin-bottom: 0.4rem !important; }
 </style>
 """,
     unsafe_allow_html=True,
+)
+# ---------------------------
+# 3B) TOP BAR (HEADER)
+# ---------------------------
+p = st.session_state["patient"]
+
+st.markdown(
+    f"""
+<div class="hos-topbar">
+  <div class="brand">
+    <h1>HealthOS <span style="color: var(--muted); font-weight:800;">PRO</span></h1>
+    <div class="sub">Clinical Intelligence Platform</div>
+  </div>
+  <div class="meta">
+    <span class="pill"><span class="dot"></span><strong>{p.get("name","Patient")}</strong> • {p.get("sex","")} , {p.get("age","")}</span>
+    <span class="pill">Last Lab: <strong>{st.session_state.get("last_lab_label","—")}</strong></span>
+  </div>
+</div>
+""",
+    unsafe_allow_html=True
 )
 
 # ---------------------------
