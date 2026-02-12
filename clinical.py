@@ -152,6 +152,45 @@ div.stButton > button:hover{
 
 </style>
 """, unsafe_allow_html=True)
+/* Sidebar nav polish */
+[data-testid="stSidebar"] h3 { margin-bottom: 0.25rem; }
+[data-testid="stSidebar"] .stRadio label {
+  padding: 10px 10px;
+  border-radius: 12px;
+  margin: 2px 0;
+  border: 1px solid transparent;
+}
+[data-testid="stSidebar"] .stRadio label:hover {
+  background: rgba(37,99,235,0.06);
+  border-color: rgba(37,99,235,0.12);
+}
+[data-testid="stSidebar"] .stRadio div[role="radiogroup"] > label[data-checked="true"]{
+  background: rgba(37,99,235,0.10);
+  border-color: rgba(37,99,235,0.18);
+}
+[data-testid="stSidebar"] .stRadio p {
+  color: #0F172A !important;
+  font-weight: 700;
+}
+/* Inputs (selectbox / multiselect) */
+[data-baseweb="select"] > div {
+  background: #FFFFFF !important;
+  border: 1px solid rgba(15,23,42,0.10) !important;
+  border-radius: 14px !important;
+  box-shadow: 0 8px 30px rgba(15,23,42,0.04) !important;
+}
+[data-baseweb="tag"] {
+  background: rgba(37,99,235,0.10) !important;
+  border: 1px solid rgba(37,99,235,0.16) !important;
+  border-radius: 999px !important;
+}
+[data-baseweb="tag"] span {
+  color: #1D4ED8 !important;
+  font-weight: 700 !important;
+}
+.block-container { max-width: 1150px; }
+.hos-topbar { padding: 12px 14px; }
+
 
 # --- 4. DATA LOGIC ---
 def clean_numeric_value(val):
