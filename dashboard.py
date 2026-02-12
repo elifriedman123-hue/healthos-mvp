@@ -39,12 +39,10 @@ def get_google_sheet_client():
     else: return None
 
 # --- API SETUP ---
-MY_API_KEY = "AIzaSyDr9aILsF4LbU5c2tjeCwWdINEOZ2Pqn8o"
-try:
-    if "GOOGLE_API_KEY" in st.secrets:
-        MY_API_KEY = st.secrets["GOOGLE_API_KEY"]
-except: pass
-genai.configure(api_key=MY_API_KEY)
+import google.generativeai as genai
+
+genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
+
 
 # --- MODEL SETUP ---
 generation_config = GenerationConfig(temperature=0.0)
@@ -749,4 +747,5 @@ elif page == "Trends":
             st.markdown(f"""<div class='ios-row'><div class='marker-name'>{marker}</div>{col_html}</div>""", unsafe_allow_html=True)
             
         st.markdown("</div>", unsafe_allow_html=True)
+
 
