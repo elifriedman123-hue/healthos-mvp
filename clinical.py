@@ -14,7 +14,7 @@ st.set_page_config(
 )
 
 # ---------------------------
-# 2) SESSION STATE (CLEAN + SINGLE SOURCE OF TRUTH)
+# 2) SESSION STATE (SINGLE SOURCE OF TRUTH)
 # ---------------------------
 if "data" not in st.session_state:
     st.session_state["data"] = pd.DataFrame(columns=["Date", "Marker", "Value", "Unit"])
@@ -30,14 +30,25 @@ if "patient" not in st.session_state:
         "weight_kg": "",
         "notes": ""
     }
+if "ui" not in st.session_state:
+    st.session_state["ui"] = {
+        "nav": "🩺 Consult",
+        "show_debug": False,
+        "open_upload": False,
+        "open_event": False,
+        "open_patient": False,
+        "query": "",
+        "status_filter": ["bad", "warn", "ok", "optimal"],
+        "sort_mode": "Priority",
+    }
 
 # ---------------------------
-# 3) APPLE-LIKE LIGHT CLINICAL THEME (CSS)
+# 3) THEME (YOUR CSS + A FEW UX FIXES)
 # ---------------------------
 st.markdown(
     """
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
 
 :root{
   --bg: #F7F9FB;
@@ -78,12 +89,10 @@ html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
   border-radius: 16px; box-shadow: var(--shadow);
   padding: 14px;
 }
-
 .section-title{
-  margin: 8px 0 8px 0; font-size: 13px; font-weight: 800;
+  margin: 8px 0 8px 0; font-size: 13px; font-weight: 900;
   color: var(--text); letter-spacing: -0.01em;
 }
-
 .small-muted{ font-size: 11px; color: var(--muted); }
 
 /* Top bar */
@@ -95,7 +104,7 @@ html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
   margin-bottom: 14px;
 }
 .brand{ display:flex; flex-direction:column; gap:2px; }
-.brand h1{ margin:0; font-size: 20px; letter-spacing:-0.02em; color: var(--text); font-weight: 800; }
+.brand h1{ margin:0; font-size: 20px; letter-spacing:-0.02em; color: var(--text); font-weight: 900; }
 .brand .sub{ margin:0; font-size: 12px; color: var(--muted); }
 .meta{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; justify-content:flex-end; }
 .pill{
@@ -104,7 +113,7 @@ html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
   border: 1px solid var(--border); background: #FFFFFF;
   color: var(--text); font-size: 12px;
 }
-.pill strong{ font-weight: 800; }
+.pill strong{ font-weight: 900; }
 .pill .dot{ width:8px; height:8px; border-radius:999px; background: var(--ok); }
 
 /* KPI */
@@ -121,8 +130,8 @@ html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
   background: var(--card); border: 1px solid var(--border);
   border-radius: 16px; padding: 14px; box-shadow: var(--shadow);
 }
-.kpi .label{ font-size: 12px; color: var(--muted); margin-bottom: 6px; font-weight: 700; }
-.kpi .val{ font-size: 28px; color: var(--text); font-weight: 900; letter-spacing: -0.03em; }
+.kpi .label{ font-size: 12px; color: var(--muted); margin-bottom: 6px; font-weight: 800; }
+.kpi .val{ font-size: 28px; color: var(--text); font-weight: 950; letter-spacing: -0.03em; }
 .kpi .hint{ font-size: 11px; color: var(--muted); margin-top: 2px; }
 
 /* Rows */
@@ -134,17 +143,17 @@ html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
 }
 .row + .row{ margin-top: 8px; }
 .row-left{ display:flex; flex-direction:column; gap:4px; }
-.row-title{ font-size: 13px; font-weight: 800; color: var(--text); }
+.row-title{ font-size: 13px; font-weight: 900; color: var(--text); }
 .row-sub{ font-size: 11px; color: var(--muted); display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
 .row-right{ text-align:right; display:flex; flex-direction:column; gap:4px; }
-.row-val{ font-size: 14px; font-weight: 900; color: var(--text); }
+.row-val{ font-size: 14px; font-weight: 950; color: var(--text); }
 .row-delta{ font-size: 11px; color: var(--muted); }
 
 /* Chips */
 .chip{
   display:inline-flex; align-items:center; padding: 4px 8px;
   border-radius: 999px; border: 1px solid var(--border);
-  background: var(--chip-bg); font-size: 11px; font-weight: 800;
+  background: var(--chip-bg); font-size: 11px; font-weight: 900;
 }
 .chip.optimal{ color: var(--optimal); }
 .chip.ok{ color: var(--ok); }
@@ -157,7 +166,7 @@ div.stButton > button{
   border: 1px solid var(--border) !important;
   background: #FFFFFF !important;
   color: var(--text) !important;
-  font-weight: 800 !important;
+  font-weight: 900 !important;
   padding: 0.6rem 0.9rem !important;
 }
 div.stButton > button:hover{
@@ -165,7 +174,7 @@ div.stButton > button:hover{
   color: var(--primary) !important;
 }
 
-/* --- Inputs: force light theme (fix dark fields) --- */
+/* Inputs: force clean light */
 input, textarea {
   background: #FFFFFF !important;
   color: #0F172A !important;
@@ -178,14 +187,8 @@ input, textarea {
   border-radius: 14px !important;
   box-shadow: 0 8px 30px rgba(15,23,42,0.04) !important;
 }
-[data-baseweb="select"] * { color: #0F172A !important; font-weight: 700; }
+[data-baseweb="select"] * { color: #0F172A !important; font-weight: 800; }
 [data-baseweb="select"] svg { color: #64748B !important; }
-[data-baseweb="tag"]{
-  background: rgba(37,99,235,0.10) !important;
-  border: 1px solid rgba(37,99,235,0.16) !important;
-  border-radius: 999px !important;
-}
-[data-baseweb="tag"] span{ color: #1D4ED8 !important; font-weight: 800 !important; }
 ul[role="listbox"]{
   background: #FFFFFF !important;
   border: 1px solid rgba(15,23,42,0.10) !important;
@@ -195,11 +198,11 @@ ul[role="listbox"]{
 ul[role="listbox"] li{ color: #0F172A !important; }
 ul[role="listbox"] li:hover{ background: rgba(37,99,235,0.06) !important; }
 
-/* Reduce vertical whitespace */
+/* Reduce whitespace */
 [data-testid="stVerticalBlock"] { gap: 0.55rem; }
 h3 { margin-top: 0.55rem !important; margin-bottom: 0.35rem !important; }
 
-/* --- Premium Sidebar --- */
+/* Premium Sidebar */
 [data-testid="stSidebar"] {
   background: var(--sidebar-bg);
   border-right: 1px solid var(--border);
@@ -217,30 +220,28 @@ h3 { margin-top: 0.55rem !important; margin-bottom: 0.35rem !important; }
   background: rgba(255,255,255,0.92);
   margin-bottom: 12px;
 }
-.sidebar-brand .logo-line{
-  display:flex; align-items:center; justify-content:space-between;
-}
-.sidebar-brand .logo{
-  font-weight: 900; letter-spacing:-0.02em;
-  color: var(--text); font-size: 16px;
-}
+.sidebar-brand .logo-line{ display:flex; align-items:center; justify-content:space-between; }
+.sidebar-brand .logo{ font-weight: 950; letter-spacing:-0.02em; color: var(--text); font-size: 16px; }
 .sidebar-brand .tag{
-  font-size: 11px; font-weight: 800;
-  padding: 4px 8px;
-  border-radius: 999px;
+  font-size: 11px; font-weight: 950;
+  padding: 4px 8px; border-radius: 999px;
   border: 1px solid var(--border);
   background: rgba(15,23,42,0.03);
   color: var(--muted);
 }
-.sidebar-brand .mini{
-  font-size: 11px; color: var(--muted);
-  line-height: 1.2;
+.sidebar-brand .mini{ font-size: 11px; color: var(--muted); line-height: 1.2; }
+
+.sidebar-section{
+  font-size: 11px;
+  font-weight: 950;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin: 10px 0 6px 6px;
 }
 
 /* Sidebar radio -> iOS list */
-[data-testid="stSidebar"] .stRadio div[role="radiogroup"]{
-  gap: 6px;
-}
+[data-testid="stSidebar"] .stRadio div[role="radiogroup"]{ gap: 6px; }
 [data-testid="stSidebar"] .stRadio label{
   padding: 10px 12px;
   border-radius: 14px;
@@ -258,20 +259,10 @@ h3 { margin-top: 0.55rem !important; margin-bottom: 0.35rem !important; }
 }
 [data-testid="stSidebar"] .stRadio p{
   color: #0F172A !important;
-  font-weight: 900 !important;
+  font-weight: 950 !important;
   font-size: 13px !important;
 }
 
-.sidebar-section{
-  font-size: 11px;
-  font-weight: 900;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  margin: 10px 0 6px 6px;
-}
-
-/* Make sidebar toggles small + clean */
 [data-testid="stSidebar"] [data-testid="stToggleSwitch"]{
   transform: scale(0.92);
   transform-origin: left center;
@@ -408,7 +399,6 @@ def get_master_data():
 # ---------------------------
 def fuzzy_match(marker, master):
     lab_clean = clean_marker_name(marker)
-
     for _, row in master.iterrows():
         keywords = [clean_marker_name(k) for k in str(row["Fuzzy Match Keywords"]).split(",")]
         if lab_clean in keywords:
@@ -423,7 +413,6 @@ def fuzzy_match(marker, master):
             if score > best_score:
                 best_score = score
                 best_row = row
-
     return best_row if best_score > 0.85 else None
 
 def parse_range(range_str):
@@ -472,24 +461,21 @@ def last_lab_date(results_df):
 def calc_delta(marker_clean, results, current_date):
     df = results[(results["CleanMarker"] == marker_clean) & results["Date"].notna()].copy()
     df = df.sort_values("Date")
-
     cur = df[df["Date"] == current_date]
     if cur.empty:
         return None
-
     prev_df = df[df["Date"] < current_date]
     if prev_df.empty:
         return None
 
     prev_val = prev_df.iloc[-1]["NumericValue"]
     cur_val = cur.iloc[-1]["NumericValue"]
-
     if pd.isna(prev_val) or pd.isna(cur_val):
         return None
     return cur_val - prev_val
 
 # ---------------------------
-# 7) CHART ENGINE
+# 7) CHART ENGINE (UNCHANGED)
 # ---------------------------
 def calculate_stagger(events_df, days_threshold=20):
     if events_df.empty:
@@ -623,7 +609,7 @@ def plot_chart(marker, results, events, master):
                 baseline="middle",
                 dx=6,
                 fontSize=11,
-                fontWeight=600,
+                fontWeight=700,
                 color="#0F172A",
             ).encode(
                 x="Date:T",
@@ -636,21 +622,23 @@ def plot_chart(marker, results, events, master):
     return alt.layer(*layers).properties(height=480, background="#FFFFFF").configure_view(strokeWidth=0)
 
 # ---------------------------
-# 8) UI SHELL (SINGLE TOP BAR)
+# 8) UI SHELL (TOP BAR + COMMANDS)
 # ---------------------------
 master = get_master_data()
 results, events = get_data()
 patient = st.session_state["patient"]
+ui = st.session_state["ui"]
 
 last_date = last_lab_date(results)
 last_date_str = last_date.strftime("%d %b %Y") if last_date is not None else "—"
 
+# Topbar
 st.markdown(
     f"""
 <div class="hos-topbar">
   <div class="brand">
-    <h1>HealthOS <span style="color: var(--muted); font-weight:800;">PRO</span></h1>
-    <div class="sub">Clinical Intelligence Platform</div>
+    <h1>HealthOS <span style="color: var(--muted); font-weight:900;">PRO</span></h1>
+    <div class="sub">Doctor workflow • longitudinal labs + interventions</div>
   </div>
   <div class="meta">
     <span class="pill"><span class="dot"></span><strong>{patient.get('name','Patient')}</strong> • {patient.get('sex','')}, {patient.get('age','')}</span>
@@ -661,8 +649,33 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+# Command row (Streamlit-native so it feels responsive)
+cmd1, cmd2, cmd3, cmd4, cmd5 = st.columns([1.2, 1.2, 1.4, 1.4, 2.8], gap="small")
+with cmd1:
+    if st.button("Upload lab"):
+        ui["open_upload"] = True
+        ui["open_event"] = False
+        ui["open_patient"] = False
+with cmd2:
+    if st.button("Add intervention"):
+        ui["open_event"] = True
+        ui["open_upload"] = False
+        ui["open_patient"] = False
+with cmd3:
+    if st.button("Edit patient"):
+        ui["open_patient"] = True
+        ui["open_upload"] = False
+        ui["open_event"] = False
+with cmd4:
+    if st.button("Reset demo"):
+        wipe_db()
+        st.toast("Demo reset.", icon="✅")
+        st.rerun()
+with cmd5:
+    st.markdown('<div class="small-muted" style="padding-top:10px;">Tip: In demos, start with <strong>Upload lab</strong> → show <strong>Attention required</strong> → jump to <strong>Trends</strong> with interventions overlay.</div>', unsafe_allow_html=True)
+
 # ---------------------------
-# 9) PREMIUM SIDEBAR
+# 9) PREMIUM SIDEBAR (SIMPLIFIED NAV)
 # ---------------------------
 with st.sidebar:
     st.markdown(
@@ -672,30 +685,32 @@ with st.sidebar:
     <div class="logo">HealthOS</div>
     <div class="tag">PRO</div>
   </div>
-  <div class="mini">Doctor demo build • clean clinical UI</div>
+  <div class="mini">Clean clinical UI • consult-first</div>
 </div>
 """,
         unsafe_allow_html=True,
     )
 
-    st.markdown('<div class="sidebar-section">Workspace</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sidebar-section">Navigate</div>', unsafe_allow_html=True)
     nav = st.radio(
         "NAV",
-        ["👤 Patient", "📊 Dashboard", "📈 Trends", "💊 Interventions", "⬆️ Import"],
+        ["🩺 Consult", "📈 Trends", "💊 Interventions"],
+        index=["🩺 Consult", "📈 Trends", "💊 Interventions"].index(ui["nav"]),
         label_visibility="collapsed",
     )
+    ui["nav"] = nav
 
-    st.markdown('<div class="sidebar-section">Demo</div>', unsafe_allow_html=True)
-    show_debug = st.toggle("Show debug tools", value=False)
-    st.markdown('<div class="small-muted">Tip: keep debug off during doctor demos.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sidebar-section">Demo Tools</div>', unsafe_allow_html=True)
+    ui["show_debug"] = st.toggle("Show debug", value=ui["show_debug"])
+    st.markdown('<div class="small-muted">Keep off during doctor demos.</div>', unsafe_allow_html=True)
 
 # ---------------------------
-# 10) PAGES
+# 10) DRAWER-LIKE PANELS (UPLOAD / EVENT / PATIENT)
 # ---------------------------
-if nav == "👤 Patient":
+if ui["open_patient"]:
     st.markdown('<div class="card">', unsafe_allow_html=True)
-    st.markdown("### Patient intake (doctor demo)")
-    st.markdown('<div class="small-muted">Enter patient details, then upload labs. This becomes the “live patient test” flow.</div>', unsafe_allow_html=True)
+    st.markdown("### Patient")
+    st.markdown('<div class="small-muted">Edit details used across the consult view.</div>', unsafe_allow_html=True)
 
     with st.form("patient_form", clear_on_submit=False):
         c1, c2, c3, c4 = st.columns([2.2, 1.0, 0.9, 1.3], gap="large")
@@ -714,9 +729,14 @@ if nav == "👤 Patient":
         with c6:
             weight_kg = st.text_input("Weight (kg)", value=str(patient.get("weight_kg", "")))
 
-        notes = st.text_area("Optional clinical notes for context…", value=patient.get("notes", ""), height=110)
+        notes = st.text_area("Optional clinical notes…", value=patient.get("notes", ""), height=110)
 
-        save = st.form_submit_button("Save patient")
+        left, right = st.columns([1, 5])
+        with left:
+            save = st.form_submit_button("Save")
+        with right:
+            close = st.form_submit_button("Close")
+
         if save:
             st.session_state["patient"] = {
                 "name": name,
@@ -727,44 +747,87 @@ if nav == "👤 Patient":
                 "weight_kg": weight_kg,
                 "notes": notes,
             }
-            st.success("Saved.")
+            st.toast("Patient saved.", icon="✅")
+            ui["open_patient"] = False
+            st.rerun()
+
+        if close:
+            ui["open_patient"] = False
+            st.rerun()
 
     st.markdown("</div>", unsafe_allow_html=True)
 
+if ui["open_upload"]:
     st.markdown('<div class="card">', unsafe_allow_html=True)
-    st.markdown("### Upload labs (the demo)")
-    st.markdown('<div class="small-muted">For now: CSV upload. Later: PDF/image upload + AI extraction.</div>', unsafe_allow_html=True)
+    st.markdown("### Upload lab")
+    st.markdown('<div class="small-muted">CSV for now. Later: PDF/image upload + extraction pipeline.</div>', unsafe_allow_html=True)
 
-    up = st.file_uploader("Upload CSV", type=["csv"], key="patient_csv")
-    if up and st.button("Process upload"):
-        msg, count = process_upload(up, show_debug=show_debug)
+    up = st.file_uploader("Choose file", type=["csv"], key="lab_upload_main")
+    cA, cB = st.columns([1, 6])
+    with cA:
+        go = st.button("Import", disabled=not bool(up))
+    with cB:
+        cancel = st.button("Close upload")
+
+    if go and up:
+        with st.spinner("Importing…"):
+            msg, count = process_upload(up, show_debug=ui["show_debug"])
         if msg == "Success":
-            st.success(f"Imported {count} rows.")
+            st.toast(f"Imported {count} rows.", icon="✅")
+            ui["open_upload"] = False
             st.rerun()
         else:
             st.error(msg)
 
-    if show_debug:
+    if cancel:
+        ui["open_upload"] = False
+        st.rerun()
+
+    if ui["show_debug"]:
         st.markdown("---")
-        if st.button("Wipe session (demo reset)"):
+        st.caption("Debug tools")
+        if st.button("Wipe session (debug)"):
             wipe_db()
             st.warning("Wiped.")
             st.rerun()
 
     st.markdown("</div>", unsafe_allow_html=True)
 
-elif nav == "📊 Dashboard":
-    if results.empty:
-        st.markdown('<div class="card">', unsafe_allow_html=True)
-        st.markdown("### Upload your first lab to begin")
-        st.markdown("This dashboard normalizes results across labs and highlights what needs attention.")
-        st.markdown("</div>", unsafe_allow_html=True)
-        st.stop()
+if ui["open_event"]:
+    st.markdown('<div class="card">', unsafe_allow_html=True)
+    st.markdown("### Add intervention")
+    st.markdown('<div class="small-muted">These overlay directly on the biomarker trend charts.</div>', unsafe_allow_html=True)
 
-    dates = sorted(results["Date"].dropna().unique(), reverse=True)
-    sel_date = st.selectbox("Report date", dates, format_func=lambda d: d.strftime("%d %b %Y"))
+    with st.form("add_event_quick"):
+        c1, c2, c3 = st.columns([1.1, 2.2, 1.2], gap="large")
+        with c1:
+            d = st.date_input("Date")
+        with c2:
+            n = st.text_input("Event name", placeholder="e.g., Start statin / Start TRT / Stop alcohol")
+        with c3:
+            t = st.selectbox("Type", ["Medication", "Lifestyle", "Procedure"])
+        left, right = st.columns([1, 6])
+        with left:
+            add = st.form_submit_button("Add")
+        with right:
+            close = st.form_submit_button("Close")
+
+        if add:
+            add_clinical_event(d, n, t, "")
+            st.toast("Intervention added.", icon="✅")
+            ui["open_event"] = False
+            st.rerun()
+        if close:
+            ui["open_event"] = False
+            st.rerun()
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+# ---------------------------
+# 11) PAGES
+# ---------------------------
+def build_dashboard_rows(results, master, sel_date):
     subset = results[results["Date"] == sel_date].copy()
-
     rows = []
     counts = {"bad": 0, "warn": 0, "optimal": 0, "ok": 0}
 
@@ -794,38 +857,25 @@ elif nav == "📊 Dashboard":
             }
         )
 
-    st.markdown(
-        f"""
-<div class="kpi-grid">
-  <div class="kpi"><div class="label">Total tested</div><div class="val">{len(rows)}</div><div class="hint">Biomarkers detected</div></div>
-  <div class="kpi"><div class="label">Optimal</div><div class="val" style="color:var(--optimal)">{counts.get("optimal",0)}</div><div class="hint">Within optimal band</div></div>
-  <div class="kpi"><div class="label">In range</div><div class="val" style="color:var(--ok)">{counts.get("ok",0)}</div><div class="hint">Within reference</div></div>
-  <div class="kpi"><div class="label">Borderline</div><div class="val" style="color:var(--warn)">{counts.get("warn",0)}</div><div class="hint">Watch & adjust</div></div>
-  <div class="kpi"><div class="label">Needs attention</div><div class="val" style="color:var(--bad)">{counts.get("bad",0)}</div><div class="hint">Out of range</div></div>
-</div>
-""",
-        unsafe_allow_html=True,
-    )
+    return rows, counts
 
-    c1, c2 = st.columns(2, gap="large")
+def render_rows(title, rows):
+    st.markdown(f'<div class="section-title">{title}</div>', unsafe_allow_html=True)
+    st.markdown('<div class="card">', unsafe_allow_html=True)
 
-    def render_rows(title, filter_fn):
-        st.markdown(f'<div class="section-title">{title}</div>', unsafe_allow_html=True)
-        st.markdown('<div class="card">', unsafe_allow_html=True)
+    if not rows:
+        st.markdown('<div class="small-muted">Nothing to show for the current filters.</div>', unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
+        return
 
-        shown = 0
-        for r in sorted(rows, key=lambda x: x["Prio"]):
-            if not filter_fn(r):
-                continue
-            shown += 1
+    for r in rows:
+        delta_txt = ""
+        if r["Delta"] is not None:
+            arrow = "↑" if r["Delta"] > 0 else "↓"
+            delta_txt = f"{arrow} {abs(r['Delta']):g} vs previous"
 
-            delta_txt = ""
-            if r["Delta"] is not None:
-                arrow = "↑" if r["Delta"] > 0 else "↓"
-                delta_txt = f"{arrow} {abs(r['Delta']):g} vs previous"
-
-            st.markdown(
-                f"""
+        st.markdown(
+            f"""
 <div class="row">
   <div class="row-left">
     <div class="row-title">{r['Marker']}</div>
@@ -840,22 +890,84 @@ elif nav == "📊 Dashboard":
   </div>
 </div>
 """,
-                unsafe_allow_html=True,
-            )
+            unsafe_allow_html=True,
+        )
 
-        if shown == 0:
-            st.markdown('<div class="small-muted">Nothing in this section for this report date.</div>', unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
+# --- Consult Page (Intake + Dashboard) ---
+if nav == "🩺 Consult":
+    st.markdown('<div class="card">', unsafe_allow_html=True)
+    st.markdown("### Consult view")
+    st.markdown('<div class="small-muted">Fast, consult-ready summary. Use the buttons above for Upload / Intervention / Patient.</div>', unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    if results.empty:
+        st.markdown('<div class="card">', unsafe_allow_html=True)
+        st.markdown("### No labs yet")
+        st.markdown('<div class="small-muted">Click <strong>Upload lab</strong> to import a CSV and populate the consult dashboard.</div>', unsafe_allow_html=True)
         st.markdown("</div>", unsafe_allow_html=True)
+        st.stop()
 
-    with c1:
-        render_rows("Attention required", lambda r: r["StatusKey"] in ["bad", "warn"])
-    with c2:
-        render_rows("Stable / optimized", lambda r: r["StatusKey"] in ["optimal", "ok"])
+    dates = sorted(results["Date"].dropna().unique(), reverse=True)
+    topL, topR = st.columns([1.2, 2.8], gap="large")
+    with topL:
+        sel_date = st.selectbox("Report date", dates, format_func=lambda d: d.strftime("%d %b %Y"))
+    with topR:
+        cQ, cS, cSort = st.columns([2.2, 1.4, 1.4], gap="small")
+        with cQ:
+            ui["query"] = st.text_input("Search biomarkers", value=ui["query"], placeholder="e.g., Ferritin, LDL, Testosterone")
+        with cS:
+            ui["status_filter"] = st.multiselect(
+                "Status",
+                options=["bad", "warn", "ok", "optimal"],
+                default=ui["status_filter"],
+                format_func=lambda x: {"bad":"Needs attention","warn":"Borderline","ok":"In range","optimal":"Optimal"}[x],
+            )
+        with cSort:
+            ui["sort_mode"] = st.selectbox("Sort", ["Priority", "Marker A–Z"], index=0 if ui["sort_mode"]=="Priority" else 1)
 
+    rows, counts = build_dashboard_rows(results, master, sel_date)
+
+    # KPI block
+    st.markdown(
+        f"""
+<div class="kpi-grid">
+  <div class="kpi"><div class="label">Total tested</div><div class="val">{len(rows)}</div><div class="hint">Biomarkers detected</div></div>
+  <div class="kpi"><div class="label">Optimal</div><div class="val" style="color:var(--optimal)">{counts.get("optimal",0)}</div><div class="hint">Within optimal band</div></div>
+  <div class="kpi"><div class="label">In range</div><div class="val" style="color:var(--ok)">{counts.get("ok",0)}</div><div class="hint">Within reference</div></div>
+  <div class="kpi"><div class="label">Borderline</div><div class="val" style="color:var(--warn)">{counts.get("warn",0)}</div><div class="hint">Watch & adjust</div></div>
+  <div class="kpi"><div class="label">Needs attention</div><div class="val" style="color:var(--bad)">{counts.get("bad",0)}</div><div class="hint">Out of range</div></div>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+
+    # Filtering
+    q = (ui["query"] or "").strip().lower()
+    filt = []
+    for r in rows:
+        if r["StatusKey"] not in ui["status_filter"]:
+            continue
+        if q and (q not in str(r["Marker"]).lower()) and (q not in str(r["MarkerClean"]).lower()):
+            continue
+        filt.append(r)
+
+    if ui["sort_mode"] == "Priority":
+        filt = sorted(filt, key=lambda x: (x["Prio"], x["Marker"]))
+    else:
+        filt = sorted(filt, key=lambda x: x["Marker"])
+
+    left, right = st.columns(2, gap="large")
+    with left:
+        render_rows("Attention required", [r for r in filt if r["StatusKey"] in ["bad", "warn"]])
+    with right:
+        render_rows("Stable / optimized", [r for r in filt if r["StatusKey"] in ["optimal", "ok"]])
+
+# --- Trends Page ---
 elif nav == "📈 Trends":
     if results.empty:
-        st.warning("No data loaded yet. Upload a CSV in Patient (or Import).")
+        st.warning("No data loaded yet. Click Upload lab in the command bar.")
         st.stop()
 
     markers = sorted(results["CleanMarker"].unique())
@@ -919,34 +1031,21 @@ elif nav == "📈 Trends":
                 if i + 1 < len(remaining):
                     render_chart(remaining[i + 1])
 
+# --- Interventions Page ---
 elif nav == "💊 Interventions":
-    st.markdown("### Interventions timeline")
-    st.markdown('<div class="small-muted">Medication / lifestyle / procedure events appear as markers on trend charts.</div>', unsafe_allow_html=True)
-
-    st.markdown('<div class="card">', unsafe_allow_html=True)
-    with st.form("add_event"):
-        c1, c2, c3 = st.columns([1, 2, 1], gap="large")
-        with c1:
-            d = st.date_input("Date")
-        with c2:
-            n = st.text_input("Event name", placeholder="e.g., Start TRT 200mg/wk")
-        with c3:
-            t = st.selectbox("Type", ["Medication", "Lifestyle", "Procedure"])
-        if st.form_submit_button("Add event"):
-            add_clinical_event(d, n, t, "")
-            st.success("Added")
-            st.rerun()
-    st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown("### Interventions")
+    st.markdown('<div class="small-muted">These appear on trend charts as vertical markers.</div>', unsafe_allow_html=True)
 
     if events.empty:
-        st.markdown('<div class="card"><div class="small-muted">No interventions yet.</div></div>', unsafe_allow_html=True)
-    else:
-        ev = events.dropna(subset=["Date"]).sort_values("Date")
-        st.markdown('<div class="card">', unsafe_allow_html=True)
+        st.markdown('<div class="card"><div class="small-muted">No interventions yet. Click <strong>Add intervention</strong> above.</div></div>', unsafe_allow_html=True)
+        st.stop()
 
-        for i, row in ev.iterrows():
-            st.markdown(
-                f"""
+    ev = events.dropna(subset=["Date"]).sort_values("Date")
+    st.markdown('<div class="card">', unsafe_allow_html=True)
+
+    for i, row in ev.iterrows():
+        st.markdown(
+            f"""
 <div class="row">
   <div class="row-left">
     <div class="row-title">{row['Event']}</div>
@@ -955,41 +1054,20 @@ elif nav == "💊 Interventions":
       <span>{row['Date'].strftime('%d %b %Y')}</span>
     </div>
   </div>
-  <div class="row-right">
-    <div class="row-delta"></div>
-  </div>
+  <div class="row-right"></div>
 </div>
 """,
-                unsafe_allow_html=True,
-            )
-            colA, colB = st.columns([8, 1])
-            with colB:
-                if st.button("Delete", key=f"del_{i}"):
-                    delete_event(i)
-                    st.rerun()
+            unsafe_allow_html=True,
+        )
 
-        st.markdown("</div>", unsafe_allow_html=True)
-
-elif nav == "⬆️ Import":
-    st.markdown("### Import (utility)")
-    st.markdown('<div class="small-muted">Raw CSV uploader. For doctor demos, use the Patient tab.</div>', unsafe_allow_html=True)
-
-    st.markdown('<div class="card">', unsafe_allow_html=True)
-    up = st.file_uploader("Upload CSV", type=["csv"], key="import_csv")
-
-    if up and st.button("Process upload", key="import_btn"):
-        msg, count = process_upload(up, show_debug=show_debug)
-        if msg == "Success":
-            st.success(f"Imported {count} rows.")
-            st.rerun()
-        else:
-            st.error(msg)
-
-    if show_debug:
-        st.markdown("---")
-        if st.button("Wipe session (debug)"):
-            wipe_db()
-            st.warning("Wiped.")
-            st.rerun()
+        # safer delete
+        colA, colB, colC = st.columns([7, 1.7, 1.0], gap="small")
+        with colB:
+            confirm = st.checkbox("Confirm", key=f"confirm_{i}")
+        with colC:
+            if st.button("Delete", key=f"del_{i}", disabled=not confirm):
+                delete_event(i)
+                st.toast("Deleted.", icon="🗑️")
+                st.rerun()
 
     st.markdown("</div>", unsafe_allow_html=True)
