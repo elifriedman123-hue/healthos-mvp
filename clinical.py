@@ -37,13 +37,10 @@ if "ui" not in st.session_state:
         "open_upload": False,
         "open_event": False,
         "open_patient": False,
-        "query": "",
-        "status_filter": ["bad", "warn", "ok", "optimal"],
-        "sort_mode": "Priority",
     }
 
 # ---------------------------
-# 3) THEME (YOUR CSS + A FEW UX FIXES)
+# 3) THEME (CSS + UX FIXES)
 # ---------------------------
 st.markdown(
     """
@@ -90,7 +87,7 @@ html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
   padding: 14px;
 }
 .section-title{
-  margin: 8px 0 8px 0; font-size: 13px; font-weight: 900;
+  margin: 8px 0 6px 0; font-size: 13px; font-weight: 900;
   color: var(--text); letter-spacing: -0.01em;
 }
 .small-muted{ font-size: 11px; color: var(--muted); }
@@ -160,7 +157,7 @@ html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
 .chip.warn{ color: var(--warn); }
 .chip.bad{ color: var(--bad); }
 
-/* Buttons */
+/* Buttons (default) */
 div.stButton > button{
   border-radius: 12px !important;
   border: 1px solid var(--border) !important;
@@ -173,6 +170,14 @@ div.stButton > button:hover{
   border-color: rgba(37,99,235,0.35) !important;
   color: var(--primary) !important;
 }
+
+/* Primary buttons (fix “old black” form styling) */
+button[kind="primary"]{
+  background: var(--primary) !important;
+  color: #FFFFFF !important;
+  border: 1px solid rgba(37,99,235,0.30) !important;
+}
+button[kind="primary"]:hover{ filter: brightness(0.97); }
 
 /* Inputs: force clean light */
 input, textarea {
@@ -263,10 +268,18 @@ h3 { margin-top: 0.55rem !important; margin-bottom: 0.35rem !important; }
   font-size: 13px !important;
 }
 
-[data-testid="stSidebar"] [data-testid="stToggleSwitch"]{
-  transform: scale(0.92);
-  transform-origin: left center;
+/* File uploader: force light */
+[data-testid="stFileUploaderDropzone"]{
+  background: #FFFFFF !important;
+  border: 1px dashed rgba(15,23,42,0.18) !important;
+  border-radius: 16px !important;
+  padding: 14px !important;
+  box-shadow: var(--shadow) !important;
 }
+[data-testid="stFileUploaderDropzone"] *{ color: #0F172A !important; }
+
+/* Make charts feel contained */
+.vega-embed, .vega-embed details, .vega-embed summary { border-radius: 14px !important; }
 </style>
 """,
     unsafe_allow_html=True,
@@ -622,7 +635,7 @@ def plot_chart(marker, results, events, master):
     return alt.layer(*layers).properties(height=480, background="#FFFFFF").configure_view(strokeWidth=0)
 
 # ---------------------------
-# 8) UI SHELL (TOP BAR + COMMANDS)
+# 8) UI SHELL
 # ---------------------------
 master = get_master_data()
 results, events = get_data()
@@ -632,7 +645,6 @@ ui = st.session_state["ui"]
 last_date = last_lab_date(results)
 last_date_str = last_date.strftime("%d %b %Y") if last_date is not None else "—"
 
-# Topbar
 st.markdown(
     f"""
 <div class="hos-topbar">
@@ -649,33 +661,8 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# Command row (Streamlit-native so it feels responsive)
-cmd1, cmd2, cmd3, cmd4, cmd5 = st.columns([1.2, 1.2, 1.4, 1.4, 2.8], gap="small")
-with cmd1:
-    if st.button("Upload lab"):
-        ui["open_upload"] = True
-        ui["open_event"] = False
-        ui["open_patient"] = False
-with cmd2:
-    if st.button("Add intervention"):
-        ui["open_event"] = True
-        ui["open_upload"] = False
-        ui["open_patient"] = False
-with cmd3:
-    if st.button("Edit patient"):
-        ui["open_patient"] = True
-        ui["open_upload"] = False
-        ui["open_event"] = False
-with cmd4:
-    if st.button("Reset demo"):
-        wipe_db()
-        st.toast("Demo reset.", icon="✅")
-        st.rerun()
-with cmd5:
-    st.markdown('<div class="small-muted" style="padding-top:10px;">Tip: In demos, start with <strong>Upload lab</strong> → show <strong>Attention required</strong> → jump to <strong>Trends</strong> with interventions overlay.</div>', unsafe_allow_html=True)
-
 # ---------------------------
-# 9) PREMIUM SIDEBAR (SIMPLIFIED NAV)
+# 9) SIDEBAR (NAV + ACTIONS)
 # ---------------------------
 with st.sidebar:
     st.markdown(
@@ -700,12 +687,37 @@ with st.sidebar:
     )
     ui["nav"] = nav
 
-    st.markdown('<div class="sidebar-section">Demo Tools</div>', unsafe_allow_html=True)
-    ui["show_debug"] = st.toggle("Show debug", value=ui["show_debug"])
+    st.markdown('<div class="sidebar-section">Quick actions</div>', unsafe_allow_html=True)
+    qa1, qa2 = st.columns(2)
+    with qa1:
+        if st.button("⬆️ Upload", use_container_width=True):
+            ui["open_upload"] = True
+            ui["open_event"] = False
+            ui["open_patient"] = False
+    with qa2:
+        if st.button("💊 Add", use_container_width=True):
+            ui["open_event"] = True
+            ui["open_upload"] = False
+            ui["open_patient"] = False
+
+    qb1, qb2 = st.columns(2)
+    with qb1:
+        if st.button("👤 Patient", use_container_width=True):
+            ui["open_patient"] = True
+            ui["open_upload"] = False
+            ui["open_event"] = False
+    with qb2:
+        if st.button("↩️ Reset", use_container_width=True):
+            wipe_db()
+            st.toast("Demo reset.", icon="✅")
+            st.rerun()
+
+    st.markdown('<div class="sidebar-section">Demo tools</div>', unsafe_allow_html=True)
+    ui["show_debug"] = st.toggle("Developer debug", value=ui["show_debug"])
     st.markdown('<div class="small-muted">Keep off during doctor demos.</div>', unsafe_allow_html=True)
 
 # ---------------------------
-# 10) DRAWER-LIKE PANELS (UPLOAD / EVENT / PATIENT)
+# 10) PANELS (UPLOAD / EVENT / PATIENT)
 # ---------------------------
 if ui["open_patient"]:
     st.markdown('<div class="card">', unsafe_allow_html=True)
@@ -733,9 +745,9 @@ if ui["open_patient"]:
 
         left, right = st.columns([1, 5])
         with left:
-            save = st.form_submit_button("Save")
+            save = st.form_submit_button("Save", type="primary")
         with right:
-            close = st.form_submit_button("Close")
+            close = st.form_submit_button("Close", type="secondary")
 
         if save:
             st.session_state["patient"] = {
@@ -763,11 +775,12 @@ if ui["open_upload"]:
     st.markdown('<div class="small-muted">CSV for now. Later: PDF/image upload + extraction pipeline.</div>', unsafe_allow_html=True)
 
     up = st.file_uploader("Choose file", type=["csv"], key="lab_upload_main")
+
     cA, cB = st.columns([1, 6])
     with cA:
         go = st.button("Import", disabled=not bool(up))
     with cB:
-        cancel = st.button("Close upload")
+        cancel = st.button("Close")
 
     if go and up:
         with st.spinner("Importing…"):
@@ -785,18 +798,18 @@ if ui["open_upload"]:
 
     if ui["show_debug"]:
         st.markdown("---")
-        st.caption("Debug tools")
-        if st.button("Wipe session (debug)"):
-            wipe_db()
-            st.warning("Wiped.")
-            st.rerun()
+        with st.expander("Debug"):
+            if st.button("Wipe session (debug)"):
+                wipe_db()
+                st.warning("Wiped.")
+                st.rerun()
 
     st.markdown("</div>", unsafe_allow_html=True)
 
 if ui["open_event"]:
     st.markdown('<div class="card">', unsafe_allow_html=True)
     st.markdown("### Add intervention")
-    st.markdown('<div class="small-muted">These overlay directly on the biomarker trend charts.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="small-muted">These overlay on biomarker trend charts.</div>', unsafe_allow_html=True)
 
     with st.form("add_event_quick"):
         c1, c2, c3 = st.columns([1.1, 2.2, 1.2], gap="large")
@@ -806,11 +819,12 @@ if ui["open_event"]:
             n = st.text_input("Event name", placeholder="e.g., Start statin / Start TRT / Stop alcohol")
         with c3:
             t = st.selectbox("Type", ["Medication", "Lifestyle", "Procedure"])
+
         left, right = st.columns([1, 6])
         with left:
-            add = st.form_submit_button("Add")
+            add = st.form_submit_button("Add", type="primary")
         with right:
-            close = st.form_submit_button("Close")
+            close = st.form_submit_button("Close", type="secondary")
 
         if add:
             add_clinical_event(d, n, t, "")
@@ -864,11 +878,11 @@ def render_rows(title, rows):
     st.markdown('<div class="card">', unsafe_allow_html=True)
 
     if not rows:
-        st.markdown('<div class="small-muted">Nothing to show for the current filters.</div>', unsafe_allow_html=True)
+        st.markdown('<div class="small-muted">Nothing to show for this report date.</div>', unsafe_allow_html=True)
         st.markdown("</div>", unsafe_allow_html=True)
         return
 
-    for r in rows:
+    for r in sorted(rows, key=lambda x: (x["Prio"], x["Marker"])):
         delta_txt = ""
         if r["Delta"] is not None:
             arrow = "↑" if r["Delta"] > 0 else "↓"
@@ -895,41 +909,25 @@ def render_rows(title, rows):
 
     st.markdown("</div>", unsafe_allow_html=True)
 
-# --- Consult Page (Intake + Dashboard) ---
+# --- Consult Page ---
 if nav == "🩺 Consult":
     st.markdown('<div class="card">', unsafe_allow_html=True)
     st.markdown("### Consult view")
-    st.markdown('<div class="small-muted">Fast, consult-ready summary. Use the buttons above for Upload / Intervention / Patient.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="small-muted">Fast consult-ready summary. Use the left menu actions for Upload / Intervention / Patient.</div>', unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
     if results.empty:
         st.markdown('<div class="card">', unsafe_allow_html=True)
         st.markdown("### No labs yet")
-        st.markdown('<div class="small-muted">Click <strong>Upload lab</strong> to import a CSV and populate the consult dashboard.</div>', unsafe_allow_html=True)
+        st.markdown('<div class="small-muted">Use <strong>⬆️ Upload</strong> in the sidebar to import a CSV.</div>', unsafe_allow_html=True)
         st.markdown("</div>", unsafe_allow_html=True)
         st.stop()
 
     dates = sorted(results["Date"].dropna().unique(), reverse=True)
-    topL, topR = st.columns([1.2, 2.8], gap="large")
-    with topL:
-        sel_date = st.selectbox("Report date", dates, format_func=lambda d: d.strftime("%d %b %Y"))
-    with topR:
-        cQ, cS, cSort = st.columns([2.2, 1.4, 1.4], gap="small")
-        with cQ:
-            ui["query"] = st.text_input("Search biomarkers", value=ui["query"], placeholder="e.g., Ferritin, LDL, Testosterone")
-        with cS:
-            ui["status_filter"] = st.multiselect(
-                "Status",
-                options=["bad", "warn", "ok", "optimal"],
-                default=ui["status_filter"],
-                format_func=lambda x: {"bad":"Needs attention","warn":"Borderline","ok":"In range","optimal":"Optimal"}[x],
-            )
-        with cSort:
-            ui["sort_mode"] = st.selectbox("Sort", ["Priority", "Marker A–Z"], index=0 if ui["sort_mode"]=="Priority" else 1)
+    sel_date = st.selectbox("Report date", dates, format_func=lambda d: d.strftime("%d %b %Y"))
 
     rows, counts = build_dashboard_rows(results, master, sel_date)
 
-    # KPI block
     st.markdown(
         f"""
 <div class="kpi-grid">
@@ -943,31 +941,16 @@ if nav == "🩺 Consult":
         unsafe_allow_html=True,
     )
 
-    # Filtering
-    q = (ui["query"] or "").strip().lower()
-    filt = []
-    for r in rows:
-        if r["StatusKey"] not in ui["status_filter"]:
-            continue
-        if q and (q not in str(r["Marker"]).lower()) and (q not in str(r["MarkerClean"]).lower()):
-            continue
-        filt.append(r)
-
-    if ui["sort_mode"] == "Priority":
-        filt = sorted(filt, key=lambda x: (x["Prio"], x["Marker"]))
-    else:
-        filt = sorted(filt, key=lambda x: x["Marker"])
-
     left, right = st.columns(2, gap="large")
     with left:
-        render_rows("Attention required", [r for r in filt if r["StatusKey"] in ["bad", "warn"]])
+        render_rows("Attention required", [r for r in rows if r["StatusKey"] in ["bad", "warn"]])
     with right:
-        render_rows("Stable / optimized", [r for r in filt if r["StatusKey"] in ["optimal", "ok"]])
+        render_rows("Stable / optimized", [r for r in rows if r["StatusKey"] in ["optimal", "ok"]])
 
 # --- Trends Page ---
 elif nav == "📈 Trends":
     if results.empty:
-        st.warning("No data loaded yet. Click Upload lab in the command bar.")
+        st.warning("No data loaded yet. Use ⬆️ Upload in the sidebar.")
         st.stop()
 
     markers = sorted(results["CleanMarker"].unique())
@@ -979,7 +962,11 @@ elif nav == "📈 Trends":
     with topB:
         layout = st.segmented_control("Layout", options=["Stacked", "2-column"], default="2-column")
     with topC:
-        compare_mode = st.toggle("Compare pair", value=True)
+        compare_mode = st.toggle(
+            "Compare two markers",
+            value=True,
+            help="Shows two charts side-by-side at the top for quick clinical comparison."
+        )
 
     if not sel:
         st.info("Select at least one biomarker.")
@@ -989,19 +976,31 @@ elif nav == "📈 Trends":
     if compare_mode:
         c1, c2 = st.columns(2, gap="large")
         with c1:
-            p1 = st.selectbox("Compare: left", sel, index=0 if sel else 0)
+            p1 = st.selectbox("Compare: left", sel, index=0)
         with c2:
             p2 = st.selectbox("Compare: right", sel, index=1 if len(sel) > 1 else 0)
         if p1 and p2 and p1 != p2:
             pair = [p1, p2]
 
     def render_chart(marker_clean: str):
-        st.markdown(f"### {marker_clean}")
+        m_row = fuzzy_match(marker_clean, master)
+        subtitle = ""
+        if m_row is not None:
+            s_min, s_max = parse_range(m_row["Standard Range"])
+            unit = m_row["Unit"] if pd.notna(m_row["Unit"]) else ""
+            subtitle = f"Ref: {s_min:g}–{s_max:g} {unit}".strip()
+
+        st.markdown('<div class="card">', unsafe_allow_html=True)
+        st.markdown(f'<div class="section-title">{marker_clean}</div>', unsafe_allow_html=True)
+        if subtitle:
+            st.markdown(f'<div class="small-muted">{subtitle}</div>', unsafe_allow_html=True)
+
         ch = plot_chart(marker_clean, results, events, master)
         if ch:
             st.altair_chart(ch, use_container_width=True)
         else:
             st.info(f"No numeric data for {marker_clean}")
+        st.markdown("</div>", unsafe_allow_html=True)
 
     if layout == "Stacked":
         already = set()
@@ -1037,7 +1036,7 @@ elif nav == "💊 Interventions":
     st.markdown('<div class="small-muted">These appear on trend charts as vertical markers.</div>', unsafe_allow_html=True)
 
     if events.empty:
-        st.markdown('<div class="card"><div class="small-muted">No interventions yet. Click <strong>Add intervention</strong> above.</div></div>', unsafe_allow_html=True)
+        st.markdown('<div class="card"><div class="small-muted">No interventions yet. Use <strong>💊 Add</strong> in the sidebar.</div></div>', unsafe_allow_html=True)
         st.stop()
 
     ev = events.dropna(subset=["Date"]).sort_values("Date")
@@ -1060,7 +1059,6 @@ elif nav == "💊 Interventions":
             unsafe_allow_html=True,
         )
 
-        # safer delete
         colA, colB, colC = st.columns([7, 1.7, 1.0], gap="small")
         with colB:
             confirm = st.checkbox("Confirm", key=f"confirm_{i}")
