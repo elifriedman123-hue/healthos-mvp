@@ -284,31 +284,41 @@ h3 { margin-top: 0.5rem !important; margin-bottom: 0.3rem !important; }
 [data-testid="stSidebar"] {
   background: var(--sidebar-bg);
   border-right: 1px solid var(--sidebar-border);
-  width: 250px !important;
+  width: 220px !important;
 }
-[data-testid="stSidebar"] > div:first-child { width: 250px !important; }
-[data-testid="stSidebar"] .block-container { padding-top: 0.8rem; }
+[data-testid="stSidebar"] > div:first-child { width: 220px !important; }
+[data-testid="stSidebar"] .block-container { padding-top: 0.6rem; }
+
+/* Tighter sidebar spacing */
+[data-testid="stSidebar"] [data-testid="stVerticalBlock"] { gap: 0.35rem; }
 
 .sb-brand{
-  padding: 12px 14px;
+  padding: 10px 12px 8px 12px;
   border-bottom: 1px solid var(--sidebar-border);
-  margin: -0.8rem -1rem 10px -1rem;
+  margin: -0.6rem -1rem 6px -1rem;
   padding-left: 1rem;
 }
-.sb-brand-name{ font-size: 15px; font-weight: 800; color: var(--text); letter-spacing: -0.02em; }
+.sb-brand-name{ font-size: 14px; font-weight: 800; color: var(--text); letter-spacing: -0.02em; }
 .sb-brand-tag{
-  display:inline-block; font-size: 9px; font-weight: 800;
-  padding: 2px 6px; border-radius: 4px;
+  display:inline-block; font-size: 8px; font-weight: 800;
+  padding: 2px 5px; border-radius: 3px;
   background: rgba(37,99,235,0.08); color: var(--primary);
-  margin-left: 6px; vertical-align: middle;
+  margin-left: 4px; vertical-align: middle;
   text-transform: uppercase; letter-spacing: 0.05em;
 }
-.sb-brand-sub{ font-size: 10px; color: var(--muted); margin-top: 2px; }
+.sb-brand-sub{ font-size: 10px; color: var(--muted); margin-top: 1px; }
 
 .sb-section{
-  font-size: 10px; font-weight: 700; color: var(--muted);
+  font-size: 9px; font-weight: 700; color: var(--muted);
   text-transform: uppercase; letter-spacing: 0.06em;
-  margin: 14px 0 6px 2px;
+  margin: 10px 0 4px 2px;
+}
+
+/* Sidebar buttons — compact */
+[data-testid="stSidebar"] div.stButton > button{
+  font-size: 11px !important;
+  padding: 0.35rem 0.5rem !important;
+  border-radius: 8px !important;
 }
 
 .sb-patient-box{
@@ -320,10 +330,10 @@ h3 { margin-top: 0.5rem !important; margin-bottom: 0.3rem !important; }
 .sb-patient-detail{ font-size: 10px; color: var(--muted); }
 
 /* Sidebar nav radio */
-[data-testid="stSidebar"] .stRadio div[role="radiogroup"]{ gap: 2px; }
+[data-testid="stSidebar"] .stRadio div[role="radiogroup"]{ gap: 1px; }
 [data-testid="stSidebar"] .stRadio label{
-  padding: 8px 10px;
-  border-radius: 8px;
+  padding: 6px 10px;
+  border-radius: 6px;
   margin: 0;
   border: 1px solid transparent;
   background: transparent;
@@ -337,7 +347,7 @@ h3 { margin-top: 0.5rem !important; margin-bottom: 0.3rem !important; }
 }
 [data-testid="stSidebar"] .stRadio p{
   color: #0F172A !important;
-  font-weight: 700 !important;
+  font-weight: 600 !important;
   font-size: 12px !important;
 }
 
@@ -589,14 +599,20 @@ def get_status(val, master_row):
     try:
         s_min, s_max = parse_range(master_row["Standard Range"])
 
+        # Parse optimal — treat empty/None/NaN as 0
         try:
-            o_min = float(master_row.get("Optimal Min", 0) or 0)
-            o_max = float(master_row.get("Optimal Max", 0) or 0)
+            o_min_raw = master_row.get("Optimal Min", None)
+            o_min = float(o_min_raw) if o_min_raw is not None and str(o_min_raw).strip() != "" else None
         except:
-            o_min, o_max = 0, 0
+            o_min = None
+        try:
+            o_max_raw = master_row.get("Optimal Max", None)
+            o_max = float(o_max_raw) if o_max_raw is not None and str(o_max_raw).strip() != "" else None
+        except:
+            o_max = None
 
         has_standard = s_min is not None and s_max is not None
-        has_optimal = (o_min > 0 or o_max > 0) and o_max > 0
+        has_optimal = o_min is not None and o_max is not None
 
         # Step 1: Check if outside standard range
         if has_standard:
@@ -608,13 +624,12 @@ def get_status(val, master_row):
             if o_min <= val <= o_max:
                 return "OPTIMAL", "optimal", 4
             else:
-                # Inside standard range but outside optimal
                 return "BORDERLINE", "warn", 2
 
         # Step 3: Inside standard range, no optimal defined
         return "IN RANGE", "ok", 3
 
-    except:
+    except Exception:
         return "UNKNOWN", "ok", 5
 
 def status_chip(status_key: str, label: str) -> str:
@@ -686,17 +701,22 @@ def plot_chart(marker, results, events, master):
         s_min, s_max = parse_range(m_row["Standard Range"])
         unit_label = m_row["Unit"] if pd.notna(m_row["Unit"]) else "Value"
         try:
-            o_min = float(m_row.get("Optimal Min", 0) or 0)
-            o_max = float(m_row.get("Optimal Max", 0) or 0)
+            o_min_raw = m_row.get("Optimal Min", None)
+            o_min = float(o_min_raw) if o_min_raw is not None and str(o_min_raw).strip() != "" else None
         except:
-            o_min, o_max = 0, 0
+            o_min = None
+        try:
+            o_max_raw = m_row.get("Optimal Max", None)
+            o_max = float(o_max_raw) if o_max_raw is not None and str(o_max_raw).strip() != "" else None
+        except:
+            o_max = None
 
     d_max = df["NumericValue"].max()
     d_min = df["NumericValue"].min()
 
     all_highs = [d_max]
     if s_max is not None: all_highs.append(s_max)
-    if o_max and o_max > 0: all_highs.append(o_max)
+    if o_max is not None: all_highs.append(o_max)
     y_top = max(all_highs) * 1.20 if max(all_highs) > 0 else 1
     y_bottom = min(0, d_min * 0.9)
 
@@ -719,15 +739,15 @@ def plot_chart(marker, results, events, master):
     layers = []
 
     # Reference band (green)
-    if s_max is not None and s_max > 0:
-        ref_band = alt.Chart(pd.DataFrame({"y": [s_min or 0], "y2": [s_max]})).mark_rect(
+    if s_min is not None and s_max is not None:
+        ref_band = alt.Chart(pd.DataFrame({"y": [s_min], "y2": [s_max]})).mark_rect(
             color="#16A34A", opacity=0.06
         ).encode(y="y", y2="y2")
         layers.append(ref_band)
 
     # Optimal band (blue)
-    if o_max and o_max > 0:
-        opt_band = alt.Chart(pd.DataFrame({"y": [o_min or 0], "y2": [o_max]})).mark_rect(
+    if o_min is not None and o_max is not None:
+        opt_band = alt.Chart(pd.DataFrame({"y": [o_min], "y2": [o_max]})).mark_rect(
             color="#2563EB", opacity=0.06
         ).encode(y="y", y2="y2")
         layers.append(opt_band)
@@ -839,7 +859,7 @@ with st.sidebar:
         set_active_patient(selected_pid)
         st.rerun()
 
-    if st.button("+ New patient", use_container_width=True):
+    if st.button("+ New", use_container_width=True):
         ui["open_add_patient"] = True
         ui["open_upload"] = False
         ui["open_event"] = False
@@ -865,7 +885,7 @@ with st.sidebar:
             ui["open_patient"] = False
             ui["open_add_patient"] = False
     with qa2:
-        if st.button("Intervention", use_container_width=True):
+        if st.button("Add Rx", use_container_width=True):
             ui["open_event"] = True
             ui["open_upload"] = False
             ui["open_patient"] = False
@@ -873,13 +893,13 @@ with st.sidebar:
 
     qa3, qa4 = st.columns(2)
     with qa3:
-        if st.button("Edit patient", use_container_width=True):
+        if st.button("Edit Pt", use_container_width=True):
             ui["open_patient"] = True
             ui["open_upload"] = False
             ui["open_event"] = False
             ui["open_add_patient"] = False
     with qa4:
-        if st.button("Reset data", use_container_width=True):
+        if st.button("Reset", use_container_width=True):
             wipe_patient_data(pid)
             st.toast("Patient data reset.", icon="✅")
             st.rerun()
@@ -1075,13 +1095,11 @@ def build_dashboard_rows(results, master, sel_date):
     return rows, counts
 
 def render_rows(title, rows):
+    if not rows:
+        return
+
     st.markdown(f'<div class="section-title">{title}</div>', unsafe_allow_html=True)
     st.markdown('<div class="card">', unsafe_allow_html=True)
-
-    if not rows:
-        st.markdown('<div class="small-muted">None</div>', unsafe_allow_html=True)
-        st.markdown("</div>", unsafe_allow_html=True)
-        return
 
     for r in sorted(rows, key=lambda x: (x["Prio"], x["Marker"])):
         delta_txt = ""
@@ -1131,11 +1149,11 @@ if nav == "Consult":
     st.markdown(
         f"""
 <div class="kpi-grid">
-  <div class="kpi"><div class="label">Out of range</div><div class="val" style="color:var(--bad)">{counts.get("bad",0)}</div><div class="hint">Outside reference range</div></div>
+  <div class="kpi"><div class="label">Total tested</div><div class="val">{total}</div><div class="hint">Biomarkers matched</div></div>
+  <div class="kpi"><div class="label">Out of range</div><div class="val" style="color:var(--bad)">{counts.get("bad",0)}</div><div class="hint">Outside reference</div></div>
   <div class="kpi"><div class="label">Borderline</div><div class="val" style="color:var(--warn)">{counts.get("warn",0)}</div><div class="hint">In range, not optimal</div></div>
   <div class="kpi"><div class="label">In range</div><div class="val" style="color:var(--ok)">{counts.get("ok",0)}</div><div class="hint">Standard reference</div></div>
   <div class="kpi"><div class="label">Optimal</div><div class="val" style="color:var(--optimal)">{counts.get("optimal",0)}</div><div class="hint">Doctor-defined optimal</div></div>
-  <div class="kpi"><div class="label">Total tested</div><div class="val">{total}</div><div class="hint">Biomarkers matched</div></div>
 </div>
 """,
         unsafe_allow_html=True,
@@ -1212,7 +1230,7 @@ elif nav == "Interventions":
     st.markdown('<div class="small-muted">Appear on trend charts as vertical markers.</div>', unsafe_allow_html=True)
 
     if events.empty:
-        st.markdown(f'<div class="card"><div class="small-muted">No interventions yet. Use <strong>Intervention</strong> in the sidebar.</div></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="card"><div class="small-muted">No interventions yet. Use <strong>Add Rx</strong> in the sidebar.</div></div>', unsafe_allow_html=True)
         st.stop()
 
     ev = events.dropna(subset=["Date"]).sort_values("Date", ascending=False)
