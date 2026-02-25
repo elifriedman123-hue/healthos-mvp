@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import altair as alt
 import re
+import uuid
 from difflib import SequenceMatcher
 
 # ---------------------------
@@ -16,20 +17,34 @@ st.set_page_config(
 # ---------------------------
 # 2) SESSION STATE (SINGLE SOURCE OF TRUTH)
 # ---------------------------
-if "data" not in st.session_state:
-    st.session_state["data"] = pd.DataFrame(columns=["Date", "Marker", "Value", "Unit"])
-if "events" not in st.session_state:
-    st.session_state["events"] = pd.DataFrame(columns=["Date", "Event", "Type", "Notes"])
-if "patient" not in st.session_state:
-    st.session_state["patient"] = {
-        "name": "Patient Demo",
-        "sex": "M",
-        "age": 47,
-        "mrn": "",
-        "height_cm": "",
-        "weight_kg": "",
-        "notes": ""
+# Patients registry: dict of patient_id -> patient info
+if "patients" not in st.session_state:
+    demo_id = "demo_001"
+    st.session_state["patients"] = {
+        demo_id: {
+            "id": demo_id,
+            "name": "Patient Demo",
+            "sex": "M",
+            "age": 47,
+            "mrn": "",
+            "height_cm": "",
+            "weight_kg": "",
+            "notes": "",
+        }
     }
+    st.session_state["active_patient"] = demo_id
+
+if "active_patient" not in st.session_state:
+    st.session_state["active_patient"] = list(st.session_state["patients"].keys())[0]
+
+# Lab data: now includes patient_id column
+if "data" not in st.session_state:
+    st.session_state["data"] = pd.DataFrame(columns=["PatientID", "Date", "Marker", "Value", "Unit"])
+
+# Events/interventions: now includes patient_id column
+if "events" not in st.session_state:
+    st.session_state["events"] = pd.DataFrame(columns=["PatientID", "Date", "Event", "Type", "Notes"])
+
 if "ui" not in st.session_state:
     st.session_state["ui"] = {
         "nav": "🩺 Consult",
@@ -37,10 +52,66 @@ if "ui" not in st.session_state:
         "open_upload": False,
         "open_event": False,
         "open_patient": False,
+        "open_add_patient": False,
     }
 
 # ---------------------------
-# 3) THEME (CSS + UX FIXES)
+# 3) PATIENT HELPERS
+# ---------------------------
+def get_active_patient():
+    pid = st.session_state["active_patient"]
+    return st.session_state["patients"].get(pid, None)
+
+def set_active_patient(pid):
+    st.session_state["active_patient"] = pid
+
+def add_patient(name, sex="M", age=0, mrn="", height_cm="", weight_kg="", notes=""):
+    pid = f"pt_{uuid.uuid4().hex[:8]}"
+    st.session_state["patients"][pid] = {
+        "id": pid,
+        "name": name,
+        "sex": sex,
+        "age": int(age),
+        "mrn": mrn,
+        "height_cm": height_cm,
+        "weight_kg": weight_kg,
+        "notes": notes,
+    }
+    return pid
+
+def update_patient(pid, **kwargs):
+    if pid in st.session_state["patients"]:
+        st.session_state["patients"][pid].update(kwargs)
+
+def delete_patient(pid):
+    if pid in st.session_state["patients"]:
+        del st.session_state["patients"][pid]
+        # Remove associated data
+        st.session_state["data"] = st.session_state["data"][
+            st.session_state["data"]["PatientID"] != pid
+        ].reset_index(drop=True)
+        st.session_state["events"] = st.session_state["events"][
+            st.session_state["events"]["PatientID"] != pid
+        ].reset_index(drop=True)
+        # Switch to another patient if available
+        if st.session_state["patients"]:
+            st.session_state["active_patient"] = list(st.session_state["patients"].keys())[0]
+
+def get_patient_list():
+    """Returns list of (id, display_name) sorted by name."""
+    items = []
+    for pid, p in st.session_state["patients"].items():
+        label = p["name"]
+        if p.get("age"):
+            label += f" • {p['sex']}, {p['age']}"
+        if p.get("mrn"):
+            label += f" • MRN: {p['mrn']}"
+        items.append((pid, label))
+    return sorted(items, key=lambda x: x[1])
+
+
+# ---------------------------
+# 4) THEME (CSS)
 # ---------------------------
 st.markdown(
     """
@@ -146,6 +217,27 @@ html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
 .row-val{ font-size: 14px; font-weight: 950; color: var(--text); }
 .row-delta{ font-size: 11px; color: var(--muted); }
 
+/* Patient list items */
+.patient-item{
+  display:flex; justify-content:space-between; align-items:center;
+  padding: 10px 12px; border-radius: 14px;
+  border: 1px solid var(--border);
+  background: #FFFFFF;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.patient-item:hover{
+  border-color: rgba(37,99,235,0.25);
+  background: rgba(37,99,235,0.03);
+}
+.patient-item.active{
+  border-color: rgba(37,99,235,0.35);
+  background: rgba(37,99,235,0.06);
+}
+.patient-item + .patient-item{ margin-top: 6px; }
+.patient-name{ font-size: 13px; font-weight: 900; color: var(--text); }
+.patient-meta{ font-size: 11px; color: var(--muted); }
+
 /* Chips */
 .chip{
   display:inline-flex; align-items:center; padding: 4px 8px;
@@ -171,7 +263,7 @@ div.stButton > button:hover{
   color: var(--primary) !important;
 }
 
-/* Primary buttons (fix “old black” form styling) */
+/* Primary buttons */
 button[kind="primary"]{
   background: var(--primary) !important;
   color: #FFFFFF !important;
@@ -179,7 +271,7 @@ button[kind="primary"]{
 }
 button[kind="primary"]:hover{ filter: brightness(0.97); }
 
-/* Inputs: force clean light */
+/* Inputs */
 input, textarea {
   background: #FFFFFF !important;
   color: #0F172A !important;
@@ -211,9 +303,9 @@ h3 { margin-top: 0.55rem !important; margin-bottom: 0.35rem !important; }
 [data-testid="stSidebar"] {
   background: var(--sidebar-bg);
   border-right: 1px solid var(--border);
-  width: 255px !important;
+  width: 270px !important;
 }
-[data-testid="stSidebar"] > div:first-child { width: 255px !important; }
+[data-testid="stSidebar"] > div:first-child { width: 270px !important; }
 [data-testid="stSidebar"] .block-container { padding-top: 0.9rem; }
 
 .sidebar-brand{
@@ -268,7 +360,7 @@ h3 { margin-top: 0.55rem !important; margin-bottom: 0.35rem !important; }
   font-size: 13px !important;
 }
 
-/* File uploader: force light */
+/* File uploader */
 [data-testid="stFileUploaderDropzone"]{
   background: #FFFFFF !important;
   border: 1px dashed rgba(15,23,42,0.18) !important;
@@ -278,7 +370,7 @@ h3 { margin-top: 0.55rem !important; margin-bottom: 0.35rem !important; }
 }
 [data-testid="stFileUploaderDropzone"] *{ color: #0F172A !important; }
 
-/* Make charts feel contained */
+/* Charts */
 .vega-embed, .vega-embed details, .vega-embed summary { border-radius: 14px !important; }
 </style>
 """,
@@ -286,7 +378,7 @@ h3 { margin-top: 0.55rem !important; margin-bottom: 0.35rem !important; }
 )
 
 # ---------------------------
-# 4) DATA LOGIC
+# 5) DATA LOGIC
 # ---------------------------
 def clean_numeric_value(val):
     if pd.isna(val) or str(val).strip() == "":
@@ -318,9 +410,14 @@ def parse_flexible_date(date_str):
             continue
     return pd.to_datetime(date_str, errors="coerce")
 
-def get_data():
-    results = st.session_state["data"].copy()
-    events = st.session_state["events"].copy()
+def get_patient_data(patient_id):
+    """Get lab results and events for a specific patient."""
+    all_results = st.session_state["data"].copy()
+    all_events = st.session_state["events"].copy()
+
+    # Filter to active patient
+    results = all_results[all_results["PatientID"] == patient_id].copy() if not all_results.empty else all_results
+    events = all_events[all_events["PatientID"] == patient_id].copy() if not all_events.empty else all_events
 
     if not results.empty:
         results["Date"] = results["Date"].apply(parse_flexible_date)
@@ -340,7 +437,7 @@ def get_data():
 
     return results, events
 
-def process_upload(uploaded_file, show_debug=False):
+def process_upload(uploaded_file, patient_id, show_debug=False):
     try:
         try:
             df_new = pd.read_csv(uploaded_file, sep=None, engine="python")
@@ -374,41 +471,108 @@ def process_upload(uploaded_file, show_debug=False):
             df_new["Unit"] = ""
 
         df_new = df_new[needed + ["Unit"]]
+        df_new["PatientID"] = patient_id  # Tag with patient ID
         st.session_state["data"] = pd.concat([st.session_state["data"], df_new], ignore_index=True)
         return "Success", len(df_new)
 
     except Exception as e:
         return f"Error: {str(e)}", 0
 
-def add_clinical_event(date, name, type, note):
-    new_event = pd.DataFrame([{"Date": str(date), "Event": name, "Type": type, "Notes": note}])
+def add_clinical_event(patient_id, date, name, etype, note):
+    new_event = pd.DataFrame([{
+        "PatientID": patient_id,
+        "Date": str(date),
+        "Event": name,
+        "Type": etype,
+        "Notes": note,
+    }])
     st.session_state["events"] = pd.concat([st.session_state["events"], new_event], ignore_index=True)
 
 def delete_event(index):
     st.session_state["events"] = st.session_state["events"].drop(index).reset_index(drop=True)
 
-def wipe_db():
-    st.session_state["data"] = pd.DataFrame(columns=["Date", "Marker", "Value", "Unit"])
-    st.session_state["events"] = pd.DataFrame(columns=["Date", "Event", "Type", "Notes"])
+def wipe_patient_data(patient_id):
+    st.session_state["data"] = st.session_state["data"][
+        st.session_state["data"]["PatientID"] != patient_id
+    ].reset_index(drop=True)
+    st.session_state["events"] = st.session_state["events"][
+        st.session_state["events"]["PatientID"] != patient_id
+    ].reset_index(drop=True)
+
 
 # ---------------------------
-# 5) MASTER RANGES (DEMO)
+# 6) MASTER RANGES
 # ---------------------------
 def get_master_data():
     data = [
         ["Biomarker", "Standard Range", "Optimal Min", "Optimal Max", "Unit", "Fuzzy Match Keywords"],
+        # Hormones - Male
         ["Total Testosterone", "264-916", "600", "1000", "ng/dL", "TOTAL TESTOSTERONE, TOTAL T, TESTOSTERONE"],
         ["Free Testosterone", "8.7-25.1", "15", "25", "pg/mL", "FREE TESTOSTERONE, FREE T, F-TESTO"],
-        ["Haematocrit", "38.3-48.6", "40", "50", "%", "HCT, HEMATOCRIT, PCV"],
-        ["Oestradiol", "7.6-42.6", "20", "35", "pg/mL", "E2, ESTRADIOL, 17-BETA"],
-        ["PSA", "0-4.0", "0", "2.5", "ng/mL", "PROSTATE SPECIFIC ANTIGEN"],
-        ["LDL Cholesterol", "0-100", "0", "90", "mg/dL", "LDL, BAD CHOLESTEROL"],
+        ["SHBG", "10-57", "20", "45", "nmol/L", "SHBG, SEX HORMONE BINDING GLOBULIN"],
+        ["Oestradiol", "7.6-42.6", "20", "35", "pg/mL", "E2, ESTRADIOL, 17-BETA, OESTRADIOL"],
+        ["DHT", "30-85", "40", "70", "ng/dL", "DHT, DIHYDROTESTOSTERONE"],
+        ["DHEA-S", "80-560", "200", "450", "ug/dL", "DHEA-S, DHEA SULFATE, DEHYDROEPIANDROSTERONE"],
+        ["Prolactin", "4-15.2", "4", "12", "ng/mL", "PROLACTIN, PRL"],
+        ["Progesterone (Male)", "0.2-1.4", "0.3", "1.0", "ng/mL", "PROGESTERONE"],
+        ["LH", "1.7-8.6", "3", "7", "mIU/mL", "LH, LUTEINIZING HORMONE"],
+        ["FSH", "1.5-12.4", "2", "8", "mIU/mL", "FSH, FOLLICLE STIMULATING HORMONE"],
+        # Thyroid
+        ["TSH", "0.4-4.0", "1.0", "2.5", "mIU/L", "TSH, THYROID STIMULATING HORMONE"],
+        ["Free T4", "0.8-1.8", "1.0", "1.5", "ng/dL", "FT4, FREE T4, FREE THYROXINE, THYROXINE FREE"],
+        ["Free T3", "2.3-4.2", "3.0", "4.0", "pg/mL", "FT3, FREE T3, FREE TRIIODOTHYRONINE"],
+        ["Reverse T3", "9.2-24.1", "9.2", "18", "ng/dL", "RT3, REVERSE T3, REVERSE TRIIODOTHYRONINE"],
+        ["Thyroid Antibodies (TPO)", "0-34", "0", "15", "IU/mL", "TPO, THYROID PEROXIDASE, ANTI-TPO"],
+        # Metabolic / Lipids
+        ["Total Cholesterol", "0-200", "120", "180", "mg/dL", "TOTAL CHOLESTEROL, CHOLESTEROL TOTAL"],
+        ["LDL Cholesterol", "0-100", "0", "90", "mg/dL", "LDL, BAD CHOLESTEROL, LDL-C, LDL CHOLESTEROL"],
+        ["HDL Cholesterol", "40-100", "50", "80", "mg/dL", "HDL, GOOD CHOLESTEROL, HDL-C, HDL CHOLESTEROL"],
+        ["Triglycerides", "0-150", "0", "80", "mg/dL", "TRIGLYCERIDES, TG, TRIGS"],
+        ["ApoB", "0-100", "0", "70", "mg/dL", "APOB, APOLIPOPROTEIN B"],
+        ["Lp(a)", "0-30", "0", "14", "mg/dL", "LP(A), LIPOPROTEIN A, LPA"],
+        ["HbA1c", "4.0-5.6", "4.0", "5.2", "%", "HBA1C, HEMOGLOBIN A1C, A1C, GLYCATED HEMOGLOBIN"],
+        ["Fasting Glucose", "70-100", "72", "90", "mg/dL", "GLUCOSE, FASTING GLUCOSE, BLOOD SUGAR, FBG"],
+        ["Fasting Insulin", "2.6-24.9", "2.6", "8", "uIU/mL", "INSULIN, FASTING INSULIN"],
+        ["HOMA-IR", "0-2.5", "0", "1.5", "", "HOMA-IR, HOMA, INSULIN RESISTANCE"],
+        # Liver
+        ["ALT", "7-56", "10", "30", "U/L", "ALT, ALANINE AMINOTRANSFERASE, SGPT"],
+        ["AST", "10-40", "10", "30", "U/L", "AST, ASPARTATE AMINOTRANSFERASE, SGOT"],
+        ["GGT", "0-65", "10", "30", "U/L", "GGT, GAMMA-GLUTAMYL TRANSFERASE, GAMMA GT"],
+        ["ALP", "44-147", "50", "100", "U/L", "ALP, ALKALINE PHOSPHATASE"],
+        # Kidney
+        ["Creatinine", "0.7-1.3", "0.8", "1.1", "mg/dL", "CREATININE, CREAT"],
+        ["eGFR", "60-120", "90", "120", "mL/min", "EGFR, ESTIMATED GFR, GLOMERULAR FILTRATION RATE"],
+        ["BUN", "6-20", "8", "16", "mg/dL", "BUN, BLOOD UREA NITROGEN, UREA"],
+        ["Uric Acid", "3.0-7.0", "3.5", "5.5", "mg/dL", "URIC ACID, UA"],
+        # Haematology
+        ["Haematocrit", "38.3-48.6", "40", "50", "%", "HCT, HEMATOCRIT, HAEMATOCRIT, PCV"],
+        ["Haemoglobin", "13.0-17.5", "14", "16.5", "g/dL", "HGB, HEMOGLOBIN, HAEMOGLOBIN, HB"],
+        ["RBC", "4.5-5.5", "4.5", "5.2", "M/uL", "RBC, RED BLOOD CELLS, ERYTHROCYTES"],
+        ["WBC", "4.5-11.0", "5", "8", "K/uL", "WBC, WHITE BLOOD CELLS, LEUKOCYTES"],
+        ["Platelets", "150-400", "175", "300", "K/uL", "PLT, PLATELETS, PLATELET COUNT"],
+        # Inflammation
+        ["hs-CRP", "0-3.0", "0", "1.0", "mg/L", "CRP, HS-CRP, HIGH SENSITIVITY CRP, C-REACTIVE PROTEIN"],
+        ["ESR", "0-22", "0", "10", "mm/hr", "ESR, SED RATE, ERYTHROCYTE SEDIMENTATION RATE"],
+        ["Homocysteine", "0-15", "5", "10", "umol/L", "HOMOCYSTEINE, HCY"],
+        # Iron / Minerals
         ["Ferritin", "30-400", "50", "150", "ug/L", "FERRITIN"],
+        ["Iron", "60-170", "80", "140", "ug/dL", "IRON, SERUM IRON, FE"],
+        ["TIBC", "250-370", "260", "350", "ug/dL", "TIBC, TOTAL IRON BINDING CAPACITY"],
+        ["Transferrin Saturation", "20-50", "25", "40", "%", "TRANSFERRIN SAT, TSAT, IRON SATURATION"],
+        ["Magnesium", "1.7-2.2", "2.0", "2.2", "mg/dL", "MAGNESIUM, MG"],
+        ["Zinc", "60-130", "80", "120", "ug/dL", "ZINC, ZN"],
+        # Vitamins
+        ["Vitamin D", "30-100", "50", "80", "ng/mL", "VITAMIN D, 25-OH VITAMIN D, 25-HYDROXY, VIT D, 25(OH)D"],
+        ["Vitamin B12", "200-900", "500", "800", "pg/mL", "VITAMIN B12, B12, COBALAMIN"],
+        ["Folate", "2.7-17", "8", "15", "ng/mL", "FOLATE, FOLIC ACID, B9"],
+        # Prostate
+        ["PSA", "0-4.0", "0", "2.5", "ng/mL", "PSA, PROSTATE SPECIFIC ANTIGEN"],
     ]
     return pd.DataFrame(data[1:], columns=data[0])
 
+
 # ---------------------------
-# 6) UTILS
+# 7) UTILS
 # ---------------------------
 def fuzzy_match(marker, master):
     lab_clean = clean_marker_name(marker)
@@ -487,8 +651,17 @@ def calc_delta(marker_clean, results, current_date):
         return None
     return cur_val - prev_val
 
+def patient_summary_counts(patient_id, master):
+    """Quick count of labs and events for a patient (used in patient list)."""
+    all_data = st.session_state["data"]
+    all_events = st.session_state["events"]
+    lab_count = len(all_data[all_data["PatientID"] == patient_id]) if not all_data.empty else 0
+    event_count = len(all_events[all_events["PatientID"] == patient_id]) if not all_events.empty else 0
+    return lab_count, event_count
+
+
 # ---------------------------
-# 7) CHART ENGINE (UNCHANGED)
+# 8) CHART ENGINE
 # ---------------------------
 def calculate_stagger(events_df, days_threshold=20):
     if events_df.empty:
@@ -634,16 +807,21 @@ def plot_chart(marker, results, events, master):
 
     return alt.layer(*layers).properties(height=480, background="#FFFFFF").configure_view(strokeWidth=0)
 
+
 # ---------------------------
-# 8) UI SHELL
+# 9) UI SHELL
 # ---------------------------
 master = get_master_data()
-results, events = get_data()
-patient = st.session_state["patient"]
+patient = get_active_patient()
+pid = st.session_state["active_patient"]
+results, events = get_patient_data(pid)
 ui = st.session_state["ui"]
 
 last_date = last_lab_date(results)
 last_date_str = last_date.strftime("%d %b %Y") if last_date is not None else "—"
+
+# Patient count for display
+patient_count = len(st.session_state["patients"])
 
 st.markdown(
     f"""
@@ -655,6 +833,7 @@ st.markdown(
   <div class="meta">
     <span class="pill"><span class="dot"></span><strong>{patient.get('name','Patient')}</strong> • {patient.get('sex','')}, {patient.get('age','')}</span>
     <span class="pill">Last Lab: <strong>{last_date_str}</strong></span>
+    <span class="pill">Patients: <strong>{patient_count}</strong></span>
   </div>
 </div>
 """,
@@ -662,7 +841,7 @@ st.markdown(
 )
 
 # ---------------------------
-# 9) SIDEBAR (NAV + ACTIONS)
+# 10) SIDEBAR
 # ---------------------------
 with st.sidebar:
     st.markdown(
@@ -678,15 +857,42 @@ with st.sidebar:
         unsafe_allow_html=True,
     )
 
+    # --- Patient Selector ---
+    st.markdown('<div class="sidebar-section">Active patient</div>', unsafe_allow_html=True)
+    patient_list = get_patient_list()
+    patient_ids = [p[0] for p in patient_list]
+    patient_labels = [p[1] for p in patient_list]
+
+    current_idx = patient_ids.index(pid) if pid in patient_ids else 0
+    selected_label = st.selectbox(
+        "Patient",
+        patient_labels,
+        index=current_idx,
+        label_visibility="collapsed",
+    )
+    selected_pid = patient_ids[patient_labels.index(selected_label)]
+    if selected_pid != pid:
+        set_active_patient(selected_pid)
+        st.rerun()
+
+    # Add patient button
+    if st.button("➕ New patient", use_container_width=True):
+        ui["open_add_patient"] = True
+        ui["open_upload"] = False
+        ui["open_event"] = False
+        ui["open_patient"] = False
+
+    # --- Navigation ---
     st.markdown('<div class="sidebar-section">Navigate</div>', unsafe_allow_html=True)
     nav = st.radio(
         "NAV",
-        ["🩺 Consult", "📈 Trends", "💊 Interventions"],
-        index=["🩺 Consult", "📈 Trends", "💊 Interventions"].index(ui["nav"]),
+        ["🩺 Consult", "📈 Trends", "💊 Interventions", "👥 Patients"],
+        index=["🩺 Consult", "📈 Trends", "💊 Interventions", "👥 Patients"].index(ui["nav"]) if ui["nav"] in ["🩺 Consult", "📈 Trends", "💊 Interventions", "👥 Patients"] else 0,
         label_visibility="collapsed",
     )
     ui["nav"] = nav
 
+    # --- Quick actions ---
     st.markdown('<div class="sidebar-section">Quick actions</div>', unsafe_allow_html=True)
     qa1, qa2 = st.columns(2)
     with qa1:
@@ -694,35 +900,96 @@ with st.sidebar:
             ui["open_upload"] = True
             ui["open_event"] = False
             ui["open_patient"] = False
+            ui["open_add_patient"] = False
     with qa2:
         if st.button("💊 Add", use_container_width=True):
             ui["open_event"] = True
             ui["open_upload"] = False
             ui["open_patient"] = False
+            ui["open_add_patient"] = False
 
     qb1, qb2 = st.columns(2)
     with qb1:
-        if st.button("👤 Patient", use_container_width=True):
+        if st.button("👤 Edit patient", use_container_width=True):
             ui["open_patient"] = True
             ui["open_upload"] = False
             ui["open_event"] = False
+            ui["open_add_patient"] = False
     with qb2:
         if st.button("↩️ Reset", use_container_width=True):
-            wipe_db()
-            st.toast("Demo reset.", icon="✅")
+            wipe_patient_data(pid)
+            st.toast("Patient data reset.", icon="✅")
             st.rerun()
 
     st.markdown('<div class="sidebar-section">Demo tools</div>', unsafe_allow_html=True)
     ui["show_debug"] = st.toggle("Developer debug", value=ui["show_debug"])
     st.markdown('<div class="small-muted">Keep off during doctor demos.</div>', unsafe_allow_html=True)
 
+
 # ---------------------------
-# 10) PANELS (UPLOAD / EVENT / PATIENT)
+# 11) PANELS (UPLOAD / EVENT / PATIENT / ADD PATIENT)
 # ---------------------------
+
+# --- Add New Patient Panel ---
+if ui["open_add_patient"]:
+    st.markdown('<div class="card">', unsafe_allow_html=True)
+    st.markdown("### New patient")
+    st.markdown('<div class="small-muted">Add a patient to your roster.</div>', unsafe_allow_html=True)
+
+    with st.form("add_patient_form", clear_on_submit=True):
+        c1, c2, c3, c4 = st.columns([2.2, 1.0, 0.9, 1.3], gap="large")
+        with c1:
+            new_name = st.text_input("Patient name*", placeholder="e.g., John Smith")
+        with c2:
+            new_sex = st.selectbox("Sex", ["M", "F"])
+        with c3:
+            new_age = st.number_input("Age", min_value=0, max_value=120, value=30, step=1)
+        with c4:
+            new_mrn = st.text_input("MRN (optional)")
+
+        c5, c6 = st.columns(2, gap="large")
+        with c5:
+            new_height = st.text_input("Height (cm)", placeholder="e.g., 178")
+        with c6:
+            new_weight = st.text_input("Weight (kg)", placeholder="e.g., 82")
+
+        new_notes = st.text_area("Clinical notes (optional)", height=80)
+
+        left, right = st.columns([1, 5])
+        with left:
+            save = st.form_submit_button("Add patient", type="primary")
+        with right:
+            close = st.form_submit_button("Cancel", type="secondary")
+
+        if save:
+            if new_name.strip():
+                new_pid = add_patient(
+                    name=new_name.strip(),
+                    sex=new_sex,
+                    age=new_age,
+                    mrn=new_mrn,
+                    height_cm=new_height,
+                    weight_kg=new_weight,
+                    notes=new_notes,
+                )
+                set_active_patient(new_pid)
+                st.toast(f"Added {new_name.strip()}.", icon="✅")
+                ui["open_add_patient"] = False
+                st.rerun()
+            else:
+                st.error("Patient name is required.")
+
+        if close:
+            ui["open_add_patient"] = False
+            st.rerun()
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+# --- Edit Patient Panel ---
 if ui["open_patient"]:
     st.markdown('<div class="card">', unsafe_allow_html=True)
-    st.markdown("### Patient")
-    st.markdown('<div class="small-muted">Edit details used across the consult view.</div>', unsafe_allow_html=True)
+    st.markdown("### Edit patient")
+    st.markdown(f'<div class="small-muted">Editing: {patient.get("name", "")}</div>', unsafe_allow_html=True)
 
     with st.form("patient_form", clear_on_submit=False):
         c1, c2, c3, c4 = st.columns([2.2, 1.0, 0.9, 1.3], gap="large")
@@ -741,7 +1008,7 @@ if ui["open_patient"]:
         with c6:
             weight_kg = st.text_input("Weight (kg)", value=str(patient.get("weight_kg", "")))
 
-        notes = st.text_area("Optional clinical notes…", value=patient.get("notes", ""), height=110)
+        notes = st.text_area("Clinical notes…", value=patient.get("notes", ""), height=110)
 
         left, right = st.columns([1, 5])
         with left:
@@ -750,16 +1017,9 @@ if ui["open_patient"]:
             close = st.form_submit_button("Close", type="secondary")
 
         if save:
-            st.session_state["patient"] = {
-                "name": name,
-                "sex": sex,
-                "age": int(age),
-                "mrn": mrn,
-                "height_cm": height_cm,
-                "weight_kg": weight_kg,
-                "notes": notes,
-            }
-            st.toast("Patient saved.", icon="✅")
+            update_patient(pid, name=name, sex=sex, age=int(age), mrn=mrn,
+                           height_cm=height_cm, weight_kg=weight_kg, notes=notes)
+            st.toast("Patient updated.", icon="✅")
             ui["open_patient"] = False
             st.rerun()
 
@@ -769,10 +1029,11 @@ if ui["open_patient"]:
 
     st.markdown("</div>", unsafe_allow_html=True)
 
+# --- Upload Panel ---
 if ui["open_upload"]:
     st.markdown('<div class="card">', unsafe_allow_html=True)
     st.markdown("### Upload lab")
-    st.markdown('<div class="small-muted">CSV for now. Later: PDF/image upload + extraction pipeline.</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="small-muted">Uploading for: <strong>{patient.get("name","")}</strong>. CSV for now — PDF/image pipeline coming.</div>', unsafe_allow_html=True)
 
     up = st.file_uploader("Choose file", type=["csv"], key="lab_upload_main")
 
@@ -780,13 +1041,13 @@ if ui["open_upload"]:
     with cA:
         go = st.button("Import", disabled=not bool(up))
     with cB:
-        cancel = st.button("Close")
+        cancel = st.button("Close", key="close_upload")
 
     if go and up:
         with st.spinner("Importing…"):
-            msg, count = process_upload(up, show_debug=ui["show_debug"])
+            msg, count = process_upload(up, pid, show_debug=ui["show_debug"])
         if msg == "Success":
-            st.toast(f"Imported {count} rows.", icon="✅")
+            st.toast(f"Imported {count} rows for {patient.get('name','')}.", icon="✅")
             ui["open_upload"] = False
             st.rerun()
         else:
@@ -799,17 +1060,18 @@ if ui["open_upload"]:
     if ui["show_debug"]:
         st.markdown("---")
         with st.expander("Debug"):
-            if st.button("Wipe session (debug)"):
-                wipe_db()
+            if st.button("Wipe patient data (debug)"):
+                wipe_patient_data(pid)
                 st.warning("Wiped.")
                 st.rerun()
 
     st.markdown("</div>", unsafe_allow_html=True)
 
+# --- Add Intervention Panel ---
 if ui["open_event"]:
     st.markdown('<div class="card">', unsafe_allow_html=True)
     st.markdown("### Add intervention")
-    st.markdown('<div class="small-muted">These overlay on biomarker trend charts.</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="small-muted">For: <strong>{patient.get("name","")}</strong>. These overlay on biomarker trend charts.</div>', unsafe_allow_html=True)
 
     with st.form("add_event_quick"):
         c1, c2, c3 = st.columns([1.1, 2.2, 1.2], gap="large")
@@ -818,7 +1080,9 @@ if ui["open_event"]:
         with c2:
             n = st.text_input("Event name", placeholder="e.g., Start statin / Start TRT / Stop alcohol")
         with c3:
-            t = st.selectbox("Type", ["Medication", "Lifestyle", "Procedure"])
+            t = st.selectbox("Type", ["Medication", "Lifestyle", "Procedure", "Supplement"])
+
+        note = st.text_input("Notes (optional)", placeholder="e.g., 200mg/week Test Cyp")
 
         left, right = st.columns([1, 6])
         with left:
@@ -827,7 +1091,7 @@ if ui["open_event"]:
             close = st.form_submit_button("Close", type="secondary")
 
         if add:
-            add_clinical_event(d, n, t, "")
+            add_clinical_event(pid, d, n, t, note)
             st.toast("Intervention added.", icon="✅")
             ui["open_event"] = False
             st.rerun()
@@ -837,8 +1101,9 @@ if ui["open_event"]:
 
     st.markdown("</div>", unsafe_allow_html=True)
 
+
 # ---------------------------
-# 11) PAGES
+# 12) PAGES
 # ---------------------------
 def build_dashboard_rows(results, master, sel_date):
     subset = results[results["Date"] == sel_date].copy()
@@ -909,17 +1174,20 @@ def render_rows(title, rows):
 
     st.markdown("</div>", unsafe_allow_html=True)
 
-# --- Consult Page ---
+
+# ===================
+# CONSULT PAGE
+# ===================
 if nav == "🩺 Consult":
     st.markdown('<div class="card">', unsafe_allow_html=True)
     st.markdown("### Consult view")
-    st.markdown('<div class="small-muted">Fast consult-ready summary. Use the left menu actions for Upload / Intervention / Patient.</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="small-muted">Patient: <strong>{patient.get("name","")}</strong> — fast consult-ready summary.</div>', unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
     if results.empty:
         st.markdown('<div class="card">', unsafe_allow_html=True)
         st.markdown("### No labs yet")
-        st.markdown('<div class="small-muted">Use <strong>⬆️ Upload</strong> in the sidebar to import a CSV.</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="small-muted">Use <strong>⬆️ Upload</strong> in the sidebar to import labs for {patient.get("name","")}.</div>', unsafe_allow_html=True)
         st.markdown("</div>", unsafe_allow_html=True)
         st.stop()
 
@@ -928,6 +1196,25 @@ if nav == "🩺 Consult":
 
     rows, counts = build_dashboard_rows(results, master, sel_date)
 
+    # Active interventions summary
+    active_interventions = []
+    if not events.empty:
+        ev_before = events[events["Date"] <= sel_date].sort_values("Date", ascending=False)
+        active_interventions = ev_before.head(3).to_dict("records")
+
+    intervention_html = ""
+    if active_interventions:
+        pills = " ".join(
+            f'<span class="chip ok">{e.get("Event","")}</span>' for e in active_interventions
+        )
+        intervention_html = f"""
+  <div class="kpi"><div class="label">Active interventions</div><div style="margin-top:6px;">{pills}</div><div class="hint">Most recent</div></div>
+"""
+    else:
+        intervention_html = """
+  <div class="kpi"><div class="label">Active interventions</div><div class="val" style="font-size:16px; color:var(--muted);">None</div><div class="hint">Add via sidebar</div></div>
+"""
+
     st.markdown(
         f"""
 <div class="kpi-grid">
@@ -935,7 +1222,7 @@ if nav == "🩺 Consult":
   <div class="kpi"><div class="label">Optimal</div><div class="val" style="color:var(--optimal)">{counts.get("optimal",0)}</div><div class="hint">Within optimal band</div></div>
   <div class="kpi"><div class="label">In range</div><div class="val" style="color:var(--ok)">{counts.get("ok",0)}</div><div class="hint">Within reference</div></div>
   <div class="kpi"><div class="label">Borderline</div><div class="val" style="color:var(--warn)">{counts.get("warn",0)}</div><div class="hint">Watch & adjust</div></div>
-  <div class="kpi"><div class="label">Needs attention</div><div class="val" style="color:var(--bad)">{counts.get("bad",0)}</div><div class="hint">Out of range</div></div>
+  {intervention_html}
 </div>
 """,
         unsafe_allow_html=True,
@@ -943,18 +1230,22 @@ if nav == "🩺 Consult":
 
     left, right = st.columns(2, gap="large")
     with left:
-        render_rows("Attention required", [r for r in rows if r["StatusKey"] in ["bad", "warn"]])
+        render_rows("⚠️ Attention required", [r for r in rows if r["StatusKey"] in ["bad", "warn"]])
     with right:
-        render_rows("Stable / optimized", [r for r in rows if r["StatusKey"] in ["optimal", "ok"]])
+        render_rows("✅ Stable / optimized", [r for r in rows if r["StatusKey"] in ["optimal", "ok"]])
 
-# --- Trends Page ---
+
+# ===================
+# TRENDS PAGE
+# ===================
 elif nav == "📈 Trends":
     if results.empty:
-        st.warning("No data loaded yet. Use ⬆️ Upload in the sidebar.")
+        st.warning(f"No data loaded for {patient.get('name','')}. Use ⬆️ Upload in the sidebar.")
         st.stop()
 
     markers = sorted(results["CleanMarker"].unique())
-    defaults = [m for m in ["TOTAL TESTOSTERONE", "FREE TESTOSTERONE", "OESTRADIOL", "HAEMATOCRIT", "PSA", "FERRITIN", "LDL CHOLESTEROL"] if m in markers]
+    # Smart defaults: show whatever markers this patient actually has
+    defaults = markers[:7] if len(markers) > 7 else markers
 
     topA, topB, topC = st.columns([2.2, 1.2, 1.6], gap="large")
     with topA:
@@ -964,7 +1255,7 @@ elif nav == "📈 Trends":
     with topC:
         compare_mode = st.toggle(
             "Compare two markers",
-            value=True,
+            value=len(sel) >= 2,
             help="Shows two charts side-by-side at the top for quick clinical comparison."
         )
 
@@ -973,7 +1264,7 @@ elif nav == "📈 Trends":
         st.stop()
 
     pair = []
-    if compare_mode:
+    if compare_mode and len(sel) >= 2:
         c1, c2 = st.columns(2, gap="large")
         with c1:
             p1 = st.selectbox("Compare: left", sel, index=0)
@@ -1030,19 +1321,23 @@ elif nav == "📈 Trends":
                 if i + 1 < len(remaining):
                     render_chart(remaining[i + 1])
 
-# --- Interventions Page ---
+
+# ===================
+# INTERVENTIONS PAGE
+# ===================
 elif nav == "💊 Interventions":
     st.markdown("### Interventions")
-    st.markdown('<div class="small-muted">These appear on trend charts as vertical markers.</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="small-muted">For: <strong>{patient.get("name","")}</strong> — these appear on trend charts as vertical markers.</div>', unsafe_allow_html=True)
 
     if events.empty:
-        st.markdown('<div class="card"><div class="small-muted">No interventions yet. Use <strong>💊 Add</strong> in the sidebar.</div></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="card"><div class="small-muted">No interventions for {patient.get("name","")} yet. Use <strong>💊 Add</strong> in the sidebar.</div></div>', unsafe_allow_html=True)
         st.stop()
 
-    ev = events.dropna(subset=["Date"]).sort_values("Date")
+    ev = events.dropna(subset=["Date"]).sort_values("Date", ascending=False)
     st.markdown('<div class="card">', unsafe_allow_html=True)
 
     for i, row in ev.iterrows():
+        notes_txt = f' — {row["Notes"]}' if row.get("Notes") and str(row["Notes"]).strip() else ""
         st.markdown(
             f"""
 <div class="row">
@@ -1051,6 +1346,7 @@ elif nav == "💊 Interventions":
     <div class="row-sub">
       <span class="chip ok">{row['Type']}</span>
       <span>{row['Date'].strftime('%d %b %Y')}</span>
+      <span style="color: var(--muted);">{notes_txt}</span>
     </div>
   </div>
   <div class="row-right"></div>
@@ -1067,5 +1363,75 @@ elif nav == "💊 Interventions":
                 delete_event(i)
                 st.toast("Deleted.", icon="🗑️")
                 st.rerun()
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+
+# ===================
+# PATIENTS PAGE (NEW)
+# ===================
+elif nav == "👥 Patients":
+    st.markdown("### Patient roster")
+    st.markdown('<div class="small-muted">Manage your patients. Click to switch active patient.</div>', unsafe_allow_html=True)
+
+    st.markdown("")  # spacing
+
+    # Add patient button at top
+    if st.button("➕ Add new patient", use_container_width=False):
+        ui["open_add_patient"] = True
+        st.rerun()
+
+    st.markdown("")
+
+    patient_list = get_patient_list()
+
+    if not patient_list:
+        st.markdown('<div class="card"><div class="small-muted">No patients yet.</div></div>', unsafe_allow_html=True)
+        st.stop()
+
+    st.markdown('<div class="card">', unsafe_allow_html=True)
+
+    for p_id, p_label in patient_list:
+        p = st.session_state["patients"][p_id]
+        lab_count, event_count = patient_summary_counts(p_id, master)
+        is_active = p_id == pid
+
+        active_class = "active" if is_active else ""
+        active_dot = '<span class="dot" style="width:6px;height:6px;border-radius:999px;background:var(--primary);display:inline-block;margin-right:4px;"></span>' if is_active else ""
+
+        st.markdown(
+            f"""
+<div class="patient-item {active_class}">
+  <div>
+    <div class="patient-name">{active_dot}{p.get('name','')}</div>
+    <div class="patient-meta">{p.get('sex','')}, {p.get('age','')} {('• MRN: ' + p.get('mrn','')) if p.get('mrn') else ''}</div>
+  </div>
+  <div style="text-align:right;">
+    <div class="patient-meta">{lab_count} lab results • {event_count} interventions</div>
+  </div>
+</div>
+""",
+            unsafe_allow_html=True,
+        )
+
+        # Action buttons for each patient
+        col1, col2, col3, col4 = st.columns([3, 1.5, 1.5, 1.5], gap="small")
+        with col2:
+            if not is_active:
+                if st.button("Select", key=f"sel_{p_id}", use_container_width=True):
+                    set_active_patient(p_id)
+                    ui["nav"] = "🩺 Consult"
+                    st.rerun()
+        with col3:
+            if st.button("Edit", key=f"edit_{p_id}", use_container_width=True):
+                set_active_patient(p_id)
+                ui["open_patient"] = True
+                st.rerun()
+        with col4:
+            if len(st.session_state["patients"]) > 1:
+                if st.button("Delete", key=f"delp_{p_id}", use_container_width=True):
+                    delete_patient(p_id)
+                    st.toast(f"Deleted {p.get('name','')}.", icon="🗑️")
+                    st.rerun()
 
     st.markdown("</div>", unsafe_allow_html=True)
