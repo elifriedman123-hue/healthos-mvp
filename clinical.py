@@ -892,6 +892,156 @@ st.markdown(
 """,
     unsafe_allow_html=True,
 )
+/* =======================
+   APPLE-WORTHY SIDEBAR
+   ======================= */
+
+/* Sidebar container: clean, padded, soft separators */
+[data-testid="stSidebar"] {
+  background: #FBFBFD !important;
+  border-right: 1px solid rgba(15,23,42,0.06) !important;
+}
+[data-testid="stSidebar"] > div:first-child {
+  padding-top: 14px !important;
+}
+[data-testid="stSidebar"] .block-container {
+  padding: 14px 14px 18px 14px !important;
+}
+
+/* Brand */
+.sb-brand {
+  display:flex;
+  flex-direction:column;
+  gap: 2px;
+  padding: 6px 6px 12px 6px;
+  border-bottom: 1px solid rgba(15,23,42,0.06);
+  margin-bottom: 12px;
+}
+.sb-brand-row { display:flex; align-items:center; gap:8px; }
+.sb-logo {
+  width: 26px; height: 26px; border-radius: 8px;
+  background: rgba(37,99,235,0.12);
+  border: 1px solid rgba(37,99,235,0.14);
+  display:flex; align-items:center; justify-content:center;
+  font-weight: 900; color: #2563EB; font-size: 13px;
+}
+.sb-brand-name {
+  font-size: 14px;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+  color: #0F172A;
+}
+.sb-brand-tag {
+  font-size: 10px;
+  font-weight: 900;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(37,99,235,0.10);
+  color: #2563EB;
+  border: 1px solid rgba(37,99,235,0.10);
+}
+.sb-brand-sub {
+  font-size: 11px;
+  color: #64748B;
+  padding-left: 2px;
+}
+
+/* Section label */
+.sb-section{
+  font-size: 10px;
+  font-weight: 900;
+  color: rgba(100,116,139,0.90);
+  text-transform: uppercase;
+  letter-spacing: 0.10em;
+  margin: 12px 0 6px 2px;
+}
+
+/* Make selectboxes truly "native" feeling */
+[data-testid="stSidebar"] [data-baseweb="select"] > div{
+  background: rgba(255,255,255,0.92) !important;
+  border: 1px solid rgba(15,23,42,0.08) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 6px 18px rgba(15,23,42,0.05) !important;
+  min-height: 42px !important;
+}
+[data-testid="stSidebar"] [data-baseweb="select"] *{
+  font-weight: 900 !important;
+}
+[data-testid="stSidebar"] [data-baseweb="select"] svg{
+  color: rgba(100,116,139,0.95) !important;
+}
+
+/* Sidebar buttons: iOS-like */
+[data-testid="stSidebar"] div.stButton > button{
+  width: 100% !important;
+  border-radius: 12px !important;
+  border: 1px solid rgba(15,23,42,0.08) !important;
+  background: rgba(255,255,255,0.92) !important;
+  box-shadow: 0 6px 18px rgba(15,23,42,0.04) !important;
+  font-weight: 900 !important;
+  padding: 0.62rem 0.75rem !important;
+}
+[data-testid="stSidebar"] div.stButton > button:hover{
+  border-color: rgba(37,99,235,0.22) !important;
+  background: rgba(37,99,235,0.05) !important;
+  color: #2563EB !important;
+}
+
+/* Primary action styling (use st.button(..., type="primary")) */
+[data-testid="stSidebar"] button[kind="primary"]{
+  background: #2563EB !important;
+  border: 1px solid rgba(37,99,235,0.30) !important;
+  color: white !important;
+  box-shadow: 0 10px 24px rgba(37,99,235,0.22) !important;
+}
+[data-testid="stSidebar"] button[kind="primary"]:hover{
+  filter: brightness(0.98);
+}
+
+/* NAV: remove radio bullets + make pill rows */
+[data-testid="stSidebar"] .stRadio div[role="radiogroup"]{
+  gap: 8px !important;
+}
+[data-testid="stSidebar"] .stRadio label{
+  margin: 0 !important;
+  padding: 10px 12px !important;
+  border-radius: 14px !important;
+  border: 1px solid rgba(15,23,42,0.08) !important;
+  background: rgba(255,255,255,0.92) !important;
+  box-shadow: 0 6px 18px rgba(15,23,42,0.04) !important;
+}
+[data-testid="stSidebar"] .stRadio label:hover{
+  border-color: rgba(37,99,235,0.18) !important;
+  background: rgba(37,99,235,0.05) !important;
+}
+
+/* Hide the radio circle completely */
+[data-testid="stSidebar"] .stRadio label > div:first-child{
+  display: none !important;
+}
+
+/* Active state */
+[data-testid="stSidebar"] .stRadio div[role="radiogroup"] > label[data-checked="true"]{
+  background: rgba(37,99,235,0.10) !important;
+  border-color: rgba(37,99,235,0.22) !important;
+  box-shadow: 0 10px 26px rgba(37,99,235,0.10) !important;
+}
+
+/* Nav label typography */
+[data-testid="stSidebar"] .stRadio p{
+  margin: 0 !important;
+  font-weight: 950 !important;
+  font-size: 13px !important;
+  color: #0F172A !important;
+}
+
+/* Small divider helper */
+.sb-divider{
+  height: 1px;
+  background: rgba(15,23,42,0.06);
+  margin: 12px 0;
+  border-radius: 999px;
+}
 
 # =========================================================
 # 10) SIDEBAR (ALL ACTIONS LIVE HERE — REMOVES TOP UNDERLINED BUTTONS)
@@ -900,14 +1050,18 @@ with st.sidebar:
     st.markdown(
         """
 <div class="sb-brand">
-  <div><span class="sb-brand-name">HealthOS</span><span class="sb-brand-tag">Pro</span></div>
+  <div class="sb-brand-row">
+    <div class="sb-logo">H</div>
+    <div class="sb-brand-name">HealthOS</div>
+    <div class="sb-brand-tag">Pro</div>
+  </div>
   <div class="sb-brand-sub">Clinical dashboard</div>
 </div>
 """,
         unsafe_allow_html=True,
     )
 
-    # Patient selector
+    # ---- Patient selector
     st.markdown('<div class="sb-section">Patient</div>', unsafe_allow_html=True)
     patient_list = get_patient_list()
     patient_ids = [p[0] for p in patient_list]
@@ -918,54 +1072,68 @@ with st.sidebar:
     selected_pid = patient_ids[patient_labels.index(selected_label)]
     if selected_pid != pid:
         set_active_patient(selected_pid)
-        # close any open panels on patient switch
         ui["open_upload"] = False
         ui["open_event"] = False
         ui["open_patient"] = False
         ui["open_add_patient"] = False
         st.rerun()
 
-    if st.button("+ New patient", use_container_width=True):
+    if st.button("＋ New patient", use_container_width=True):
         ui["open_add_patient"] = True
         ui["open_upload"] = False
         ui["open_event"] = False
         ui["open_patient"] = False
 
-    # Navigation
+    st.markdown('<div class="sb-divider"></div>', unsafe_allow_html=True)
+
+    # ---- Navigation
     st.markdown('<div class="sb-section">Navigate</div>', unsafe_allow_html=True)
     nav_options = ["Consult", "Trends", "Interventions", "Patients"]
+    nav_labels = {
+        "Consult": "🩺  Consult",
+        "Trends": "📈  Trends",
+        "Interventions": "🧾  Interventions",
+        "Patients": "👥  Patients",
+    }
+
     nav = st.radio(
         "NAV",
         nav_options,
         index=nav_options.index(ui["nav"]) if ui["nav"] in nav_options else 0,
+        format_func=lambda x: nav_labels.get(x, x),
         label_visibility="collapsed",
     )
     ui["nav"] = nav
 
-    # Actions (these replace the old top bar buttons)
+    st.markdown('<div class="sb-divider"></div>', unsafe_allow_html=True)
+
+    # ---- Actions
     st.markdown('<div class="sb-section">Actions</div>', unsafe_allow_html=True)
-    if st.button("Upload lab", use_container_width=True):
+
+    if st.button("⬆️  Upload lab", use_container_width=True, type="primary"):
         ui["open_upload"] = True
         ui["open_event"] = False
         ui["open_patient"] = False
         ui["open_add_patient"] = False
 
-    if st.button("Add intervention", use_container_width=True):
+    if st.button("➕  Add intervention", use_container_width=True):
         ui["open_event"] = True
         ui["open_upload"] = False
         ui["open_patient"] = False
         ui["open_add_patient"] = False
 
-    if st.button("Edit patient", use_container_width=True):
+    if st.button("✏️  Edit patient", use_container_width=True):
         ui["open_patient"] = True
         ui["open_upload"] = False
         ui["open_event"] = False
         ui["open_add_patient"] = False
 
-    if st.button("Reset patient data", use_container_width=True):
+    if st.button("🗑️  Reset patient data", use_container_width=True):
         wipe_patient_data(pid)
         st.toast("Patient data reset.", icon="✅")
         st.rerun()
+
+    st.markdown('<div class="sb-divider"></div>', unsafe_allow_html=True)
 
     st.markdown('<div class="sb-section">Developer</div>', unsafe_allow_html=True)
     ui["show_debug"] = st.toggle("Debug mode", value=ui["show_debug"])
