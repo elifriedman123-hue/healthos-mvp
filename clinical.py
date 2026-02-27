@@ -1,3 +1,7 @@
+# -*- coding: utf-8 -*-
+# NOTE: This file is written to be ASCII-safe (no em-dashes, ellipses, bullets, or emojis)
+# so it will not crash in environments that are not UTF-8.
+
 import streamlit as st
 import pandas as pd
 import altair as alt
@@ -97,9 +101,9 @@ def get_patient_list():
     for pid, p in st.session_state["patients"].items():
         label = p.get("name", "Unnamed")
         if p.get("age"):
-            label += f" · {p.get('sex','')}, {p.get('age','')}"
+            label += f" | {p.get('sex','')}, {p.get('age','')}"
         if p.get("mrn"):
-            label += f" · MRN: {p.get('mrn','')}"
+            label += f" | MRN: {p.get('mrn','')}"
         items.append((pid, label))
     return sorted(items, key=lambda x: x[1])
 
@@ -111,7 +115,7 @@ def patient_summary_counts(patient_id):
     return lab_count, event_count
 
 # =========================================================
-# 4) THEME (CLEAN + MICRO-POLISH FIXES)
+# 4) THEME (CSS) - SINGLE, CLEAN, CLOSED STYLE TAG
 # =========================================================
 st.markdown(
     """
@@ -132,10 +136,13 @@ st.markdown(
   --warn: #F59E0B;
   --bad: #DC2626;
 
-  --sidebar-bg: #FAFBFC;
-  --sidebar-border: rgba(15,23,42,0.08);
-  --sidebar-hover: rgba(37,99,235,0.05);
-  --sidebar-active: rgba(37,99,235,0.10);
+  --sb-bg: #FBFBFD;
+  --sb-card: rgba(255,255,255,0.92);
+  --sb-border: rgba(15,23,42,0.08);
+  --sb-shadow-soft: 0 6px 18px rgba(15,23,42,0.05);
+  --sb-text: #0F172A;
+  --sb-muted: #64748B;
+  --sb-primary: #2563EB;
 }
 
 html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
@@ -310,7 +317,7 @@ ul[role="listbox"]{
 ul[role="listbox"] li{ color: #0F172A !important; padding-top: 8px !important; padding-bottom: 8px !important; }
 ul[role="listbox"] li:hover{ background: rgba(37,99,235,0.05) !important; }
 
-/* Multiselect chips (prevents puffy / overlap look) */
+/* Multiselect tags */
 [data-baseweb="tag"]{
   border-radius: 8px !important;
   padding: 2px 6px !important;
@@ -319,7 +326,7 @@ ul[role="listbox"] li:hover{ background: rgba(37,99,235,0.05) !important; }
 [data-baseweb="tag"] span { font-size: 11px !important; }
 [data-baseweb="tag"] svg { width: 12px !important; height: 12px !important; }
 
-/* Spacing normalization */
+/* Layout spacing normalization */
 div[data-testid="stWidget"] { margin-bottom: 0.15rem !important; }
 div[data-testid="stWidget"] > div { padding-bottom: 0 !important; }
 [data-testid="stVerticalBlock"] { gap: 0.55rem; }
@@ -330,126 +337,18 @@ hr { margin: 0.6rem 0 !important; }
 div[data-testid="stForm"] { border: 0 !important; padding: 0 !important; }
 div[data-testid="stForm"] > div { gap: 0.55rem !important; }
 
-/* ===== SIDEBAR ===== */
-[data-testid="stSidebar"] {
-  background: var(--sidebar-bg);
-  border-right: 1px solid var(--sidebar-border);
-  width: 230px !important;
-}
-[data-testid="stSidebar"] > div:first-child { width: 230px !important; }
-[data-testid="stSidebar"] .block-container { padding-top: 0.6rem; }
-[data-testid="stSidebar"] [data-testid="stVerticalBlock"] { gap: 0.35rem; }
-
-.sb-brand{
-  padding: 10px 12px 8px 12px;
-  border-bottom: 1px solid var(--sidebar-border);
-  margin: -0.6rem -1rem 8px -1rem;
-  padding-left: 1rem;
-}
-.sb-brand-name{ font-size: 14px; font-weight: 950; color: var(--text); letter-spacing: -0.02em; }
-.sb-brand-tag{
-  display:inline-block; font-size: 8px; font-weight: 950;
-  padding: 2px 6px; border-radius: 4px;
-  background: rgba(37,99,235,0.10); color: var(--primary);
-  margin-left: 6px; vertical-align: middle;
-  text-transform: uppercase; letter-spacing: 0.06em;
-}
-.sb-brand-sub{ font-size: 10px; color: var(--muted); margin-top: 1px; }
-
-.sb-section{
-  font-size: 9px; font-weight: 900; color: var(--muted);
-  text-transform: uppercase; letter-spacing: 0.08em;
-  margin: 10px 0 4px 2px;
-}
-
-/* Sidebar nav radio */
-[data-testid="stSidebar"] .stRadio div[role="radiogroup"]{ gap: 2px; }
-[data-testid="stSidebar"] .stRadio label{
-  padding: 7px 10px;
-  border-radius: 8px;
-  margin: 0;
-  border: 1px solid transparent;
-  background: transparent;
-}
-[data-testid="stSidebar"] .stRadio label:hover{ background: var(--sidebar-hover); }
-[data-testid="stSidebar"] .stRadio div[role="radiogroup"] > label[data-checked="true"]{
-  background: var(--sidebar-active);
-  border-color: rgba(37,99,235,0.12);
-}
-[data-testid="stSidebar"] .stRadio p{
-  color: #0F172A !important;
-  font-weight: 900 !important;
-  font-size: 12px !important;
-}
-
-/* Sidebar selectbox height match */
-[data-testid="stSidebar"] [data-baseweb="select"] > div { min-height: 36px !important; }
-
-/* File uploader */
-[data-testid="stFileUploaderDropzone"]{
-  background: #FFFFFF !important;
-  border: 1px dashed rgba(15,23,42,0.18) !important;
-  border-radius: 10px !important;
-  padding: 12px !important;
-  box-shadow: none !important;
-}
-[data-testid="stFileUploaderDropzone"] *{ color: #0F172A !important; }
-
-/* Vega container cleanup */
-.vega-embed{ padding: 0 !important; margin: 0 !important; border-radius: 10px !important; overflow: visible !important; }
-.vega-embed details, .vega-embed summary { display: none !important; }
-.vega-embed .vega-actions { display: none !important; }
-[data-testid="stVegaLiteChart"] { padding: 0 !important; }
-
-/* Patient roster item */
-.patient-item{
-  display:flex; justify-content:space-between; align-items:center;
-  padding: 10px 12px; border-radius: 12px;
-  border: 1px solid var(--border); background: #FFFFFF;
-}
-.patient-item.active{
-  border-color: rgba(37,99,235,0.28);
-  background: rgba(37,99,235,0.04);
-}
-.patient-name{ font-size: 13px; font-weight: 950; color: var(--text); }
-.patient-meta{ font-size: 11px; color: var(--muted); }
-</style>
-""",
-    unsafe_allow_html=True,
-)
-st.markdown(
-    """
-<style>
-/* =======================
-   APPLE-WORTHY SIDEBAR v2
-   ======================= */
-
-:root{
-  --sb-bg: #FBFBFD;
-  --sb-card: rgba(255,255,255,0.92);
-  --sb-border: rgba(15,23,42,0.08);
-  --sb-shadow: 0 10px 28px rgba(15,23,42,0.06);
-  --sb-shadow-soft: 0 6px 18px rgba(15,23,42,0.05);
-  --sb-text: #0F172A;
-  --sb-muted: #64748B;
-  --sb-primary: #2563EB;
-  --sb-primary-soft: rgba(37,99,235,0.08);
-}
-
-/* Sidebar shell */
+/* ===== APPLE SIDEBAR (ONE PILL SYSTEM) ===== */
 [data-testid="stSidebar"]{
   background: var(--sb-bg) !important;
   border-right: 1px solid rgba(15,23,42,0.06) !important;
+  width: 240px !important;
 }
 [data-testid="stSidebar"] > div:first-child{ padding-top: 14px !important; }
 [data-testid="stSidebar"] .block-container{
   padding: 14px 14px 18px 14px !important;
 }
-
-/* Remove random extra spacing between widgets in sidebar */
 [data-testid="stSidebar"] [data-testid="stVerticalBlock"]{ gap: 0.55rem !important; }
 
-/* Brand block */
 .sb-brand{
   padding: 8px 6px 12px 6px;
   border-bottom: 1px solid rgba(15,23,42,0.06);
@@ -476,7 +375,7 @@ st.markdown(
   font-weight: 950;
   padding: 3px 10px;
   border-radius: 999px;
-  background: var(--sb-primary-soft);
+  background: rgba(37,99,235,0.08);
   color: var(--sb-primary);
   border: 1px solid rgba(37,99,235,0.12);
   line-height: 1;
@@ -487,7 +386,6 @@ st.markdown(
   color: var(--sb-muted);
 }
 
-/* Section label */
 .sb-section{
   font-size: 10px;
   font-weight: 950;
@@ -496,7 +394,6 @@ st.markdown(
   letter-spacing: 0.10em;
   margin: 10px 0 6px 2px;
 }
-
 .sb-divider{
   height: 1px;
   background: rgba(15,23,42,0.06);
@@ -504,14 +401,7 @@ st.markdown(
   border-radius: 999px;
 }
 
-/* ---- ONE SHARED "PILL" SYSTEM ----
-   Make: selectbox, buttons, and radio items look identical.
-*/
-
-/* Selectbox: match pill look */
-[data-testid="stSidebar"] [data-testid="stSelectbox"] > div{
-  border-radius: 14px !important;
-}
+/* Selectbox pill */
 [data-testid="stSidebar"] [data-testid="stSelectbox"] [data-baseweb="select"] > div{
   background: var(--sb-card) !important;
   border: 1px solid var(--sb-border) !important;
@@ -527,7 +417,7 @@ st.markdown(
   color: rgba(100,116,139,0.95) !important;
 }
 
-/* Buttons: match pill look */
+/* Buttons pill */
 [data-testid="stSidebar"] div.stButton > button{
   width: 100% !important;
   border-radius: 14px !important;
@@ -554,7 +444,7 @@ st.markdown(
 }
 [data-testid="stSidebar"] button[kind="primary"]:hover{ filter: brightness(0.98); }
 
-/* Radio items: match pill look */
+/* Radio pill */
 [data-testid="stSidebar"] .stRadio div[role="radiogroup"]{ gap: 10px !important; }
 [data-testid="stSidebar"] .stRadio label{
   margin: 0 !important;
@@ -568,11 +458,7 @@ st.markdown(
   border-color: rgba(37,99,235,0.18) !important;
   background: rgba(37,99,235,0.06) !important;
 }
-
-/* Hide radio bullet */
 [data-testid="stSidebar"] .stRadio label > div:first-child{ display:none !important; }
-
-/* Active radio */
 [data-testid="stSidebar"] .stRadio div[role="radiogroup"] > label[data-checked="true"]{
   background: rgba(37,99,235,0.10) !important;
   border-color: rgba(37,99,235,0.24) !important;
@@ -584,6 +470,40 @@ st.markdown(
   font-size: 13px !important;
   color: var(--sb-text) !important;
 }
+
+/* File uploader */
+[data-testid="stFileUploaderDropzone"]{
+  background: #FFFFFF !important;
+  border: 1px dashed rgba(15,23,42,0.18) !important;
+  border-radius: 10px !important;
+  padding: 12px !important;
+  box-shadow: none !important;
+}
+[data-testid="stFileUploaderDropzone"] *{ color: #0F172A !important; }
+
+/* Vega cleanup */
+.vega-embed{ padding: 0 !important; margin: 0 !important; border-radius: 10px !important; overflow: visible !important; }
+.vega-embed details, .vega-embed summary { display: none !important; }
+.vega-embed .vega-actions { display: none !important; }
+[data-testid="stVegaLiteChart"] { padding: 0 !important; }
+
+/* Patient roster item */
+.patient-item{
+  display:flex; justify-content:space-between; align-items:center;
+  padding: 10px 12px; border-radius: 12px;
+  border: 1px solid var(--border); background: #FFFFFF;
+}
+.patient-item.active{
+  border-color: rgba(37,99,235,0.28);
+  background: rgba(37,99,235,0.04);
+}
+.patient-name{ font-size: 13px; font-weight: 950; color: var(--text); }
+.patient-meta{ font-size: 11px; color: var(--muted); }
+</style>
+""",
+    unsafe_allow_html=True,
+)
+
 # =========================================================
 # 5) DATA LOGIC
 # =========================================================
@@ -591,8 +511,7 @@ def clean_numeric_value(val):
     if pd.isna(val) or str(val).strip() == "":
         return None
     s = str(val).strip().replace(",", "").replace(" ", "")
-    # strip common unit text
-    s = s.replace("µ", "u")
+    s = s.replace("µ", "u")  # keep this one safe
     s = s.replace("ug/L", "").replace("ug/dL", "").replace("ng/mL", "").replace("mg/dL", "")
     s = s.replace("mIU/L", "").replace("uIU/mL", "").replace("nmol/L", "").replace("%", "")
     s = s.replace("<", "").replace(">", "")
@@ -600,7 +519,7 @@ def clean_numeric_value(val):
     if match:
         try:
             return float(match.group())
-        except:
+        except Exception:
             return None
     return None
 
@@ -616,7 +535,7 @@ def parse_flexible_date(date_str):
     for fmt in formats:
         try:
             return pd.to_datetime(date_str, format=fmt)
-        except:
+        except Exception:
             continue
     return pd.to_datetime(date_str, errors="coerce")
 
@@ -645,7 +564,7 @@ def process_upload(uploaded_file, patient_id, show_debug=False):
     try:
         try:
             df_new = pd.read_csv(uploaded_file, sep=None, engine="python")
-        except:
+        except Exception:
             uploaded_file.seek(0)
             df_new = pd.read_csv(uploaded_file, encoding="ISO-8859-1")
 
@@ -683,13 +602,15 @@ def process_upload(uploaded_file, patient_id, show_debug=False):
         return f"Error: {str(e)}", 0
 
 def add_clinical_event(patient_id, date, name, etype, note):
-    new_event = pd.DataFrame([{
-        "PatientID": patient_id,
-        "Date": str(date),
-        "Event": name,
-        "Type": etype,
-        "Notes": note,
-    }])
+    new_event = pd.DataFrame(
+        [{
+            "PatientID": patient_id,
+            "Date": str(date),
+            "Event": name,
+            "Type": etype,
+            "Notes": note,
+        }]
+    )
     st.session_state["events"] = pd.concat([st.session_state["events"], new_event], ignore_index=True)
 
 def delete_event(index):
@@ -709,7 +630,6 @@ def wipe_patient_data(patient_id):
 def get_master_data():
     data = [
         ["Biomarker", "Standard Range", "Optimal Min", "Optimal Max", "Unit", "Fuzzy Match Keywords"],
-        # Hormones - Male
         ["Total Testosterone", "264-916", "600", "1000", "ng/dL", "TOTAL TESTOSTERONE, TOTAL T, TESTOSTERONE"],
         ["Free Testosterone", "8.7-25.1", "15", "25", "pg/mL", "FREE TESTOSTERONE, FREE T, F-TESTO"],
         ["SHBG", "10-57", "20", "45", "nmol/L", "SHBG, SEX HORMONE BINDING GLOBULIN"],
@@ -720,13 +640,11 @@ def get_master_data():
         ["Progesterone (Male)", "0.2-1.4", "0.3", "1.0", "ng/mL", "PROGESTERONE"],
         ["LH", "1.7-8.6", "3", "7", "mIU/mL", "LH, LUTEINIZING HORMONE"],
         ["FSH", "1.5-12.4", "2", "8", "mIU/mL", "FSH, FOLLICLE STIMULATING HORMONE"],
-        # Thyroid
         ["TSH", "0.4-4.0", "1.0", "2.5", "mIU/L", "TSH, THYROID STIMULATING HORMONE"],
         ["Free T4", "0.8-1.8", "1.0", "1.5", "ng/dL", "FT4, FREE T4, FREE THYROXINE, THYROXINE FREE"],
         ["Free T3", "2.3-4.2", "3.0", "4.0", "pg/mL", "FT3, FREE T3, FREE TRIIODOTHYRONINE"],
         ["Reverse T3", "9.2-24.1", "9.2", "18", "ng/dL", "RT3, REVERSE T3, REVERSE TRIIODOTHYRONINE"],
         ["Thyroid Antibodies (TPO)", "0-34", "0", "15", "IU/mL", "TPO, THYROID PEROXIDASE, ANTI-TPO"],
-        # Metabolic / Lipids
         ["Total Cholesterol", "0-200", "120", "180", "mg/dL", "TOTAL CHOLESTEROL, CHOLESTEROL TOTAL"],
         ["LDL Cholesterol", "0-100", "0", "90", "mg/dL", "LDL, BAD CHOLESTEROL, LDL-C, LDL CHOLESTEROL"],
         ["HDL Cholesterol", "40-100", "50", "80", "mg/dL", "HDL, GOOD CHOLESTEROL, HDL-C, HDL CHOLESTEROL"],
@@ -737,44 +655,37 @@ def get_master_data():
         ["Fasting Glucose", "70-100", "72", "90", "mg/dL", "GLUCOSE, FASTING GLUCOSE, BLOOD SUGAR, FBG"],
         ["Fasting Insulin", "2.6-24.9", "2.6", "8", "uIU/mL", "INSULIN, FASTING INSULIN"],
         ["HOMA-IR", "0-2.5", "0", "1.5", "", "HOMA-IR, HOMA, INSULIN RESISTANCE"],
-        # Liver
         ["ALT", "7-56", "10", "30", "U/L", "ALT, ALANINE AMINOTRANSFERASE, SGPT"],
         ["AST", "10-40", "10", "30", "U/L", "AST, ASPARTATE AMINOTRANSFERASE, SGOT"],
         ["GGT", "0-65", "10", "30", "U/L", "GGT, GAMMA-GLUTAMYL TRANSFERASE, GAMMA GT"],
         ["ALP", "44-147", "50", "100", "U/L", "ALP, ALKALINE PHOSPHATASE"],
-        # Kidney
         ["Creatinine", "0.7-1.3", "0.8", "1.1", "mg/dL", "CREATININE, CREAT"],
         ["eGFR", "60-120", "90", "120", "mL/min", "EGFR, ESTIMATED GFR, GLOMERULAR FILTRATION RATE"],
         ["BUN", "6-20", "8", "16", "mg/dL", "BUN, BLOOD UREA NITROGEN, UREA"],
         ["Uric Acid", "3.0-7.0", "3.5", "5.5", "mg/dL", "URIC ACID, UA"],
-        # Haematology
         ["Haematocrit", "38.3-48.6", "40", "50", "%", "HCT, HEMATOCRIT, HAEMATOCRIT, PCV"],
         ["Haemoglobin", "13.0-17.5", "14", "16.5", "g/dL", "HGB, HEMOGLOBIN, HAEMOGLOBIN, HB"],
         ["RBC", "4.5-5.5", "4.5", "5.2", "M/uL", "RBC, RED BLOOD CELLS, ERYTHROCYTES"],
         ["WBC", "4.5-11.0", "5", "8", "K/uL", "WBC, WHITE BLOOD CELLS, LEUKOCYTES"],
         ["Platelets", "150-400", "175", "300", "K/uL", "PLT, PLATELETS, PLATELET COUNT"],
-        # Inflammation
         ["hs-CRP", "0-3.0", "0", "1.0", "mg/L", "CRP, HS-CRP, HIGH SENSITIVITY CRP, C-REACTIVE PROTEIN"],
         ["ESR", "0-22", "0", "10", "mm/hr", "ESR, SED RATE, ERYTHROCYTE SEDIMENTATION RATE"],
         ["Homocysteine", "0-15", "5", "10", "umol/L", "HOMOCYSTEINE, HCY"],
-        # Iron / Minerals
         ["Ferritin", "30-400", "50", "150", "ug/L", "FERRITIN"],
         ["Iron", "60-170", "80", "140", "ug/dL", "IRON, SERUM IRON, FE"],
         ["TIBC", "250-370", "260", "350", "ug/dL", "TIBC, TOTAL IRON BINDING CAPACITY"],
         ["Transferrin Saturation", "20-50", "25", "40", "%", "TRANSFERRIN SAT, TSAT, IRON SATURATION"],
         ["Magnesium", "1.7-2.2", "2.0", "2.2", "mg/dL", "MAGNESIUM, MG"],
         ["Zinc", "60-130", "80", "120", "ug/dL", "ZINC, ZN"],
-        # Vitamins
         ["Vitamin D", "30-100", "50", "80", "ng/mL", "VITAMIN D, 25-OH VITAMIN D, 25-HYDROXY, VIT D, 25(OH)D"],
         ["Vitamin B12", "200-900", "500", "800", "pg/mL", "VITAMIN B12, B12, COBALAMIN"],
         ["Folate", "2.7-17", "8", "15", "ng/mL", "FOLATE, FOLIC ACID, B9"],
-        # Prostate
         ["PSA", "0-4.0", "0", "2.5", "ng/mL", "PSA, PROSTATE SPECIFIC ANTIGEN"],
     ]
     return pd.DataFrame(data[1:], columns=data[0])
 
 # =========================================================
-# 7) UTILS (STATUS LOGIC)
+# 7) UTILS (STATUS LOGIC) - ASCII SAFE DOCSTRING
 # =========================================================
 def fuzzy_match(marker, master):
     lab_clean = clean_marker_name(marker)
@@ -798,7 +709,8 @@ def fuzzy_match(marker, master):
 def parse_range(range_str):
     if pd.isna(range_str):
         return None, None
-    clean = str(range_str).replace("–", "-").replace(",", ".")
+    # normalize any non-ascii dashes to hyphen
+    clean = str(range_str).replace("–", "-").replace("—", "-").replace(",", ".")
     parts = re.findall(r"[-+]?\d*\.\d+|\d+", clean)
     if len(parts) >= 2:
         return float(parts[0]), float(parts[1])
@@ -807,24 +719,24 @@ def parse_range(range_str):
 def get_status(val, master_row):
     """
     Mutually exclusive classification (checked in order):
-    1) OUT OF RANGE (bad)  — outside standard reference range
-    2) OPTIMAL (optimal)   — within optimal band
-    3) BORDERLINE (warn)   — inside standard but outside optimal
-    4) IN RANGE (ok)       — inside standard, no optimal defined
+    1) OUT OF RANGE (bad)  - outside standard reference range
+    2) OPTIMAL (optimal)   - within optimal band
+    3) BORDERLINE (warn)   - inside standard but outside optimal
+    4) IN RANGE (ok)       - inside standard, no optimal defined
     """
     try:
         s_min, s_max = parse_range(master_row["Standard Range"])
 
-        # parse optimal bounds as None if missing
         try:
             o_min_raw = master_row.get("Optimal Min", None)
             o_min = float(o_min_raw) if o_min_raw is not None and str(o_min_raw).strip() != "" else None
-        except:
+        except Exception:
             o_min = None
+
         try:
             o_max_raw = master_row.get("Optimal Max", None)
             o_max = float(o_max_raw) if o_max_raw is not None and str(o_max_raw).strip() != "" else None
-        except:
+        except Exception:
             o_max = None
 
         has_standard = s_min is not None and s_max is not None
@@ -866,7 +778,7 @@ def calc_delta(marker_clean, results, current_date):
     return cur_val - prev_val
 
 # =========================================================
-# 8) CHART ENGINE (WITH LABEL/OVERLAP IMPROVEMENTS)
+# 8) CHART ENGINE
 # =========================================================
 def calculate_stagger(events_df, days_threshold=20):
     if events_df.empty:
@@ -906,12 +818,12 @@ def plot_chart(marker, results, events, master):
         try:
             o_min_raw = m_row.get("Optimal Min", None)
             o_min = float(o_min_raw) if o_min_raw is not None and str(o_min_raw).strip() != "" else None
-        except:
+        except Exception:
             o_min = None
         try:
             o_max_raw = m_row.get("Optimal Max", None)
             o_max = float(o_max_raw) if o_max_raw is not None and str(o_max_raw).strip() != "" else None
-        except:
+        except Exception:
             o_max = None
 
     d_max = df["NumericValue"].max()
@@ -944,7 +856,6 @@ def plot_chart(marker, results, events, master):
 
     layers = []
 
-    # Reference band (green)
     if s_min is not None and s_max is not None:
         layers.append(
             alt.Chart(pd.DataFrame({"y": [s_min], "y2": [s_max]}))
@@ -952,7 +863,6 @@ def plot_chart(marker, results, events, master):
             .encode(y="y", y2="y2")
         )
 
-    # Optimal band (blue)
     if o_min is not None and o_max is not None:
         layers.append(
             alt.Chart(pd.DataFrame({"y": [o_min], "y2": [o_max]}))
@@ -979,14 +889,11 @@ def plot_chart(marker, results, events, master):
 
     layers.extend([line, points])
 
-    # Intervention overlay (shorter labels + safer staggering)
     if not events.empty:
         ev = events.dropna(subset=["Date"]).copy()
         if not ev.empty:
             min_date, max_date = df["Date"].min(), df["Date"].max()
             date_span = max((max_date - min_date).days, 30)
-
-            # more aggressive staggering to reduce overlaps
             staggered = calculate_stagger(ev, days_threshold=max(10, int(date_span * 0.18)))
 
             lane_height = (y_top - y_bottom) * 0.075
@@ -994,7 +901,7 @@ def plot_chart(marker, results, events, master):
 
             s = staggered["Event"].astype(str)
             max_chars = 26
-            staggered["EventShort"] = s.str.slice(0, max_chars) + s.apply(lambda x: "…" if len(x) > max_chars else "")
+            staggered["EventShort"] = s.str.slice(0, max_chars) + s.apply(lambda x: "..." if len(x) > max_chars else "")
 
             ev_rule = alt.Chart(staggered).mark_rule(
                 color="rgba(15,23,42,0.18)", strokeWidth=1, strokeDash=[4, 3]
@@ -1023,11 +930,7 @@ def plot_chart(marker, results, events, master):
 
             layers.extend([ev_rule, ev_txt])
 
-    return (
-        alt.layer(*layers)
-        .properties(height=420, background="#FFFFFF")
-        .configure_view(strokeWidth=0)
-    )
+    return alt.layer(*layers).properties(height=420, background="#FFFFFF").configure_view(strokeWidth=0)
 
 # =========================================================
 # 9) APP STATE + TOPBAR
@@ -1039,7 +942,7 @@ results, events = get_patient_data(pid)
 ui = st.session_state["ui"]
 
 last_date = last_lab_date(results)
-last_date_str = last_date.strftime("%d %b %Y") if last_date is not None else "—"
+last_date_str = last_date.strftime("%d %b %Y") if last_date is not None else "-"
 patient_count = len(st.session_state["patients"])
 
 st.markdown(
@@ -1047,10 +950,10 @@ st.markdown(
 <div class="hos-topbar">
   <div class="brand">
     <h1>HealthOS <span style="color: var(--muted); font-weight:900;">PRO</span></h1>
-    <div class="sub">Doctor workflow · longitudinal labs + interventions</div>
+    <div class="sub">Doctor workflow | longitudinal labs + interventions</div>
   </div>
   <div class="meta">
-    <span class="pill"><span class="dot"></span><strong>{patient.get('name','')}</strong> · {patient.get('sex','')}, {patient.get('age','')}</span>
+    <span class="pill"><span class="dot"></span><strong>{patient.get('name','')}</strong> | {patient.get('sex','')}, {patient.get('age','')}</span>
     <span class="pill">Last lab: <strong>{last_date_str}</strong></span>
     <span class="pill">Patients: <strong>{patient_count}</strong></span>
   </div>
@@ -1060,7 +963,7 @@ st.markdown(
 )
 
 # =========================================================
-# 10) SIDEBAR (ALL ACTIONS LIVE HERE — REMOVES TOP UNDERLINED BUTTONS)
+# 10) SIDEBAR
 # =========================================================
 with st.sidebar:
     st.markdown(
@@ -1077,7 +980,6 @@ with st.sidebar:
         unsafe_allow_html=True,
     )
 
-    # Patient
     st.markdown('<div class="sb-section">Patient</div>', unsafe_allow_html=True)
     patient_list = get_patient_list()
     patient_ids = [p[0] for p in patient_list]
@@ -1091,13 +993,12 @@ with st.sidebar:
         ui["open_upload"] = ui["open_event"] = ui["open_patient"] = ui["open_add_patient"] = False
         st.rerun()
 
-    if st.button("+ New patient", use_container_width=True):
+    if st.button("New patient", use_container_width=True):
         ui["open_add_patient"] = True
         ui["open_upload"] = ui["open_event"] = ui["open_patient"] = False
 
     st.markdown('<div class="sb-divider"></div>', unsafe_allow_html=True)
 
-    # Navigate
     st.markdown('<div class="sb-section">Navigate</div>', unsafe_allow_html=True)
     nav_options = ["Consult", "Trends", "Interventions", "Patients"]
     nav = st.radio(
@@ -1110,7 +1011,6 @@ with st.sidebar:
 
     st.markdown('<div class="sb-divider"></div>', unsafe_allow_html=True)
 
-    # Actions
     st.markdown('<div class="sb-section">Actions</div>', unsafe_allow_html=True)
 
     if st.button("Upload lab", use_container_width=True, type="primary"):
@@ -1127,7 +1027,7 @@ with st.sidebar:
 
     if st.button("Reset patient data", use_container_width=True):
         wipe_patient_data(pid)
-        st.toast("Patient data reset.", icon="✅")
+        st.toast("Patient data reset.")
         st.rerun()
 
     st.markdown('<div class="sb-divider"></div>', unsafe_allow_html=True)
@@ -1136,13 +1036,12 @@ with st.sidebar:
     ui["show_debug"] = st.toggle("Debug mode", value=ui["show_debug"])
 
 # =========================================================
-# 11) PANELS (DRAWER-LIKE)
+# 11) PANELS
 # =========================================================
-# --- Add New Patient ---
 if ui["open_add_patient"]:
     st.markdown('<div class="card">', unsafe_allow_html=True)
     st.markdown("### New patient")
-    st.markdown('<div class="small-muted">Add a new patient record (demo-friendly).</div>', unsafe_allow_html=True)
+    st.markdown('<div class="small-muted">Add a new patient record.</div>', unsafe_allow_html=True)
 
     with st.form("add_patient_form", clear_on_submit=True):
         c1, c2, c3, c4 = st.columns([2.2, 1.0, 0.9, 1.3], gap="large")
@@ -1181,7 +1080,7 @@ if ui["open_add_patient"]:
                     notes=new_notes,
                 )
                 set_active_patient(new_pid)
-                st.toast(f"Added {new_name.strip()}.", icon="✅")
+                st.toast("Patient added.")
                 ui["open_add_patient"] = False
                 st.rerun()
             else:
@@ -1192,10 +1091,9 @@ if ui["open_add_patient"]:
 
     st.markdown("</div>", unsafe_allow_html=True)
 
-# --- Edit Patient ---
 if ui["open_patient"]:
     st.markdown('<div class="card">', unsafe_allow_html=True)
-    st.markdown(f"### Edit patient — {patient.get('name', '')}")
+    st.markdown(f"### Edit patient - {patient.get('name', '')}")
     st.markdown('<div class="small-muted">Update details used across consult + trends.</div>', unsafe_allow_html=True)
 
     with st.form("patient_form", clear_on_submit=False):
@@ -1234,7 +1132,7 @@ if ui["open_patient"]:
                 weight_kg=weight_kg,
                 notes=notes,
             )
-            st.toast("Saved.", icon="✅")
+            st.toast("Saved.")
             ui["open_patient"] = False
             st.rerun()
         if close:
@@ -1243,10 +1141,9 @@ if ui["open_patient"]:
 
     st.markdown("</div>", unsafe_allow_html=True)
 
-# --- Upload ---
 if ui["open_upload"]:
     st.markdown('<div class="card">', unsafe_allow_html=True)
-    st.markdown(f"### Upload lab — {patient.get('name','')}")
+    st.markdown(f"### Upload lab - {patient.get('name','')}")
     st.markdown('<div class="small-muted">CSV format (PDF/image pipeline later).</div>', unsafe_allow_html=True)
 
     up = st.file_uploader("Choose file", type=["csv"], key="lab_upload_main")
@@ -1257,10 +1154,10 @@ if ui["open_upload"]:
         cancel = st.button("Close", key="close_upload")
 
     if go and up:
-        with st.spinner("Importing…"):
+        with st.spinner("Importing..."):
             msg, count = process_upload(up, pid, show_debug=ui["show_debug"])
         if msg == "Success":
-            st.toast(f"Imported {count} rows.", icon="✅")
+            st.toast(f"Imported {count} rows.")
             ui["open_upload"] = False
             st.rerun()
         else:
@@ -1272,10 +1169,9 @@ if ui["open_upload"]:
 
     st.markdown("</div>", unsafe_allow_html=True)
 
-# --- Add Intervention ---
 if ui["open_event"]:
     st.markdown('<div class="card">', unsafe_allow_html=True)
-    st.markdown(f"### Add intervention — {patient.get('name','')}")
+    st.markdown(f"### Add intervention - {patient.get('name','')}")
 
     with st.form("add_event_quick"):
         c1, c2, c3 = st.columns([1.1, 2.2, 1.2], gap="large")
@@ -1286,7 +1182,7 @@ if ui["open_event"]:
         with c3:
             t = st.selectbox("Type", ["Medication", "Lifestyle", "Procedure", "Supplement"])
 
-        note = st.text_input("Notes (optional)", placeholder="e.g., Dose, protocol, reason…")
+        note = st.text_input("Notes (optional)", placeholder="e.g., Dose, protocol, reason")
 
         left, right = st.columns([1, 6])
         with left:
@@ -1299,7 +1195,7 @@ if ui["open_event"]:
                 st.error("Name is required.")
             else:
                 add_clinical_event(pid, d, n, t, note)
-                st.toast("Added.", icon="✅")
+                st.toast("Added.")
                 ui["open_event"] = False
                 st.rerun()
 
@@ -1312,13 +1208,13 @@ if ui["open_event"]:
 # =========================================================
 # 12) PAGE HELPERS
 # =========================================================
-def build_dashboard_rows(results, master, sel_date):
-    subset = results[results["Date"] == sel_date].copy()
+def build_dashboard_rows(results_df, master_df, sel_date):
+    subset = results_df[results_df["Date"] == sel_date].copy()
     rows = []
     counts = {"bad": 0, "warn": 0, "ok": 0, "optimal": 0}
 
     for _, r in subset.iterrows():
-        m_row = fuzzy_match(r["Marker"], master)
+        m_row = fuzzy_match(r["Marker"], master_df)
         if m_row is None or pd.isna(r["NumericValue"]):
             continue
 
@@ -1327,23 +1223,25 @@ def build_dashboard_rows(results, master, sel_date):
 
         s_min, s_max = parse_range(m_row["Standard Range"])
         unit = m_row["Unit"] if pd.notna(m_row["Unit"]) else (r.get("Unit", "") or "")
-        delta = calc_delta(r["CleanMarker"], results, sel_date)
+        delta = calc_delta(r["CleanMarker"], results_df, sel_date)
 
         ref_str = ""
         if s_min is not None and s_max is not None:
-            ref_str = f"{s_min:g}–{s_max:g} {unit}".strip()
+            ref_str = f"{s_min:g}-{s_max:g} {unit}".strip()
 
-        rows.append({
-            "Marker": m_row["Biomarker"],
-            "MarkerClean": r["CleanMarker"],
-            "Value": r["NumericValue"],
-            "Unit": unit,
-            "StatusLabel": status_label,
-            "StatusKey": status_key,
-            "Prio": prio,
-            "Ref": ref_str,
-            "Delta": delta,
-        })
+        rows.append(
+            {
+                "Marker": m_row["Biomarker"],
+                "MarkerClean": r["CleanMarker"],
+                "Value": r["NumericValue"],
+                "Unit": unit,
+                "StatusLabel": status_label,
+                "StatusKey": status_key,
+                "Prio": prio,
+                "Ref": ref_str,
+                "Delta": delta,
+            }
+        )
 
     return rows, counts
 
@@ -1358,7 +1256,7 @@ def render_rows(title, rows):
     for r in sorted(rows, key=lambda x: (x["Prio"], x["Marker"])):
         delta_txt = ""
         if r["Delta"] is not None:
-            arrow = "↑" if r["Delta"] > 0 else "↓"
+            arrow = "^" if r["Delta"] > 0 else "v"
             delta_txt = f"{arrow} {abs(r['Delta']):g} vs prev"
 
         ref_html = f"<span>Ref: {r['Ref']}</span>" if r["Ref"] else ""
@@ -1387,10 +1285,6 @@ def render_rows(title, rows):
 # =========================================================
 # 13) PAGES
 # =========================================================
-
-# ===================
-# CONSULT (SIMPLIFIED — REMOVES THE "CLUTTER" CONTROLS)
-# ===================
 if nav == "Consult":
     if results.empty:
         st.markdown('<div class="card">', unsafe_allow_html=True)
@@ -1430,9 +1324,6 @@ if nav == "Consult":
     with right:
         render_rows("Stable / optimal", [r for r in rows if r["StatusKey"] in ["optimal", "ok"]])
 
-# ===================
-# TRENDS (CARDS HAVE TITLES + SUBTLE BORDER BY DESIGN)
-# ===================
 elif nav == "Trends":
     if results.empty:
         st.warning(f"No data for {patient.get('name','')}. Use Upload lab in the sidebar.")
@@ -1460,7 +1351,7 @@ elif nav == "Trends":
             s_min, s_max = parse_range(m_row["Standard Range"])
             unit = m_row["Unit"] if pd.notna(m_row["Unit"]) else ""
             if s_min is not None and s_max is not None:
-                subtitle = f"Reference: {s_min:g}–{s_max:g} {unit}".strip()
+                subtitle = f"Reference: {s_min:g}-{s_max:g} {unit}".strip()
 
         st.markdown('<div class="card" style="padding:14px 14px 10px 14px;">', unsafe_allow_html=True)
         st.markdown(
@@ -1492,16 +1383,13 @@ elif nav == "Trends":
                 if i + 1 < len(sel):
                     render_chart(sel[i + 1])
 
-# ===================
-# INTERVENTIONS
-# ===================
 elif nav == "Interventions":
-    st.markdown(f"### Interventions — {patient.get('name','')}")
+    st.markdown(f"### Interventions - {patient.get('name','')}")
     st.markdown('<div class="small-muted">Appear on trend charts as vertical markers.</div>', unsafe_allow_html=True)
 
     if events.empty:
         st.markdown(
-            f'<div class="card"><div class="small-muted">No interventions yet. Use <strong>Add intervention</strong> in the sidebar.</div></div>',
+            '<div class="card"><div class="small-muted">No interventions yet. Use <strong>Add intervention</strong> in the sidebar.</div></div>',
             unsafe_allow_html=True,
         )
         st.stop()
@@ -1511,7 +1399,7 @@ elif nav == "Interventions":
 
     for i, row in ev.iterrows():
         notes_txt = str(row.get("Notes", "") or "").strip()
-        notes_html = f"<span style='color:var(--muted);'>— {notes_txt}</span>" if notes_txt else ""
+        notes_html = f"<span style='color:var(--muted);'>- {notes_txt}</span>" if notes_txt else ""
 
         st.markdown(
             f"""
@@ -1535,19 +1423,16 @@ elif nav == "Interventions":
         with colC:
             if st.button("Delete", key=f"del_{i}", disabled=not confirm):
                 delete_event(i)
-                st.toast("Deleted.", icon="🗑️")
+                st.toast("Deleted.")
                 st.rerun()
 
     st.markdown("</div>", unsafe_allow_html=True)
 
-# ===================
-# PATIENTS (CONTAINER-BASED — FIXES MISALIGNMENT/SPACING)
-# ===================
 elif nav == "Patients":
     st.markdown("### Patient roster")
     st.markdown('<div class="small-muted">Manage patients. Select to switch active patient.</div>', unsafe_allow_html=True)
 
-    if st.button("+ Add new patient"):
+    if st.button("Add new patient"):
         ui["open_add_patient"] = True
         st.rerun()
 
@@ -1561,53 +1446,49 @@ elif nav == "Patients":
         lab_count, event_count = patient_summary_counts(p_id)
         is_active = (p_id == pid)
 
-        with st.container():
-            active_class = "active" if is_active else ""
-            active_indicator = "● " if is_active else ""
+        active_class = "active" if is_active else ""
+        active_indicator = "* " if is_active else ""
 
-            st.markdown(
-                f"""
+        st.markdown(
+            f"""
 <div class="patient-item {active_class}">
   <div>
     <div class="patient-name">{active_indicator}{p.get('name','')}</div>
-    <div class="patient-meta">{p.get('sex','')}, {p.get('age','')}{(' · MRN: ' + p.get('mrn','')) if p.get('mrn') else ''}</div>
+    <div class="patient-meta">{p.get('sex','')}, {p.get('age','')}{(' | MRN: ' + p.get('mrn','')) if p.get('mrn') else ''}</div>
   </div>
   <div style="text-align:right;">
-    <div class="patient-meta">{lab_count} labs · {event_count} interventions</div>
+    <div class="patient-meta">{lab_count} labs | {event_count} interventions</div>
   </div>
 </div>
 """,
-                unsafe_allow_html=True,
-            )
+            unsafe_allow_html=True,
+        )
 
-            c1, c2, c3 = st.columns([1.2, 1.0, 1.0], gap="small")
-            with c1:
-                if not is_active:
-                    if st.button("Select", key=f"sel_{p_id}", use_container_width=True):
-                        set_active_patient(p_id)
-                        ui["nav"] = "Consult"
-                        ui["open_upload"] = False
-                        ui["open_event"] = False
-                        ui["open_patient"] = False
-                        ui["open_add_patient"] = False
-                        st.rerun()
-                else:
-                    st.markdown('<div class="small-muted" style="padding:6px 2px;">Active</div>', unsafe_allow_html=True)
-
-            with c2:
-                if st.button("Edit", key=f"edit_{p_id}", use_container_width=True):
+        c1, c2, c3 = st.columns([1.2, 1.0, 1.0], gap="small")
+        with c1:
+            if not is_active:
+                if st.button("Select", key=f"sel_{p_id}", use_container_width=True):
                     set_active_patient(p_id)
-                    ui["open_patient"] = True
+                    ui["nav"] = "Consult"
+                    ui["open_upload"] = ui["open_event"] = ui["open_patient"] = ui["open_add_patient"] = False
+                    st.rerun()
+            else:
+                st.markdown('<div class="small-muted" style="padding:6px 2px;">Active</div>', unsafe_allow_html=True)
+
+        with c2:
+            if st.button("Edit", key=f"edit_{p_id}", use_container_width=True):
+                set_active_patient(p_id)
+                ui["open_patient"] = True
+                st.rerun()
+
+        with c3:
+            if len(st.session_state["patients"]) > 1:
+                if st.button("Remove", key=f"delp_{p_id}", use_container_width=True):
+                    delete_patient(p_id)
+                    st.toast("Removed.")
                     st.rerun()
 
-            with c3:
-                if len(st.session_state["patients"]) > 1:
-                    if st.button("Remove", key=f"delp_{p_id}", use_container_width=True):
-                        delete_patient(p_id)
-                        st.toast(f"Removed {p.get('name','')}.", icon="🗑️")
-                        st.rerun()
-
-            st.markdown('<div style="height:10px;"></div>', unsafe_allow_html=True)
+        st.markdown('<div style="height:10px;"></div>', unsafe_allow_html=True)
 
 # =========================================================
 # 14) OPTIONAL DEBUG
